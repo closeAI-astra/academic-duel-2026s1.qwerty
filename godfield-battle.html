@@ -6,19 +6,20 @@
 <meta http-equiv="Cache-Control" content="no-store,no-cache,must-revalidate,max-age=0">
 <meta name="theme-color" content="#090b0f">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com https://cdn.jsdelivr.net; img-src 'self' data:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>学歴召喚 G.F. Ver.2.00</title>
+<title>学歴召喚 G.F. Ver.2.02</title>
 <link rel="stylesheet" href="./access-gate.css?v=2.00-complete-004">
-<link rel="stylesheet" href="./godfield.css?v=2.00-complete-004">
+<link rel="stylesheet" href="./godfield.css?v=2.02-defense-question-001">
 <script src="./access-gate.js?v=2.00-complete-004"></script>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
-<script type="module" src="./godfield-battle.js?v=2.00-complete-004"></script>
+<script type="module" src="./godfield-battle.js?v=2.02-defense-question-001"></script>
 </head>
-<body class="gf2-body" data-gf-battle="1" data-gf-build="2.00">
+<body class="gf2-body" data-gf-battle="1" data-gf-build="2.02">
 <main id="gf-panel" class="gf2-shell">
   <header class="gf2-topbar">
     <button id="gf-leave" class="gf2-back" type="button">←</button>
     <div><strong>G.F. × ENGLISH</strong><small>ACADEMIC DUEL · FINAL</small></div>
-    <div class="gf2-status"><em class="gf2-version">Ver.2.00</em><span id="gf-status">接続中…</span><b id="gf-timer"></b></div>
+    <label class="gf2-question-setting" for="gf-question-display-mode"><span>問題表示</span><select id="gf-question-display-mode"><option value="inline">通常位置</option><option value="overlay">回答中だけ前面</option></select></label>
+    <div class="gf2-status"><em class="gf2-version">Ver.2.02</em><span id="gf-status">接続中…</span><b id="gf-timer"></b></div>
   </header>
 
 
@@ -95,7 +96,7 @@
           <span id="gf-defense-count">0枚 / 守0</span>
         </div>
         <p id="gf-defense-text"></p>
-        <small>中央の手札で明るい防具を好きな枚数選択</small>
+        <small>中央の手札で防具を選択。決定を押さなくても時間切れ時に選択分を自動使用します。</small>
         <div class="gf2-defense-actions">
           <button id="gf-defend" type="button" disabled>選択防具で防御</button>
           <button id="gf-take" type="button">許す</button>

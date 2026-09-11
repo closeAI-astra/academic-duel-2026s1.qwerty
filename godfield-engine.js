@@ -1,4 +1,4 @@
-import { GF, CARD, drawArtifact } from './godfield-data.js?v=2.00-complete-004';
+import { GF, CARD, drawArtifact } from './godfield-data.js?v=2.02-defense-question-001';
 
 export const PHASE = Object.freeze({
   LOBBY:'lobby', TURN:'turn', QUESTION:'question', GROUP:'group-question',
@@ -70,6 +70,8 @@ export function buildSingleAttack(cards){
   if(!cards.length)return {ok:false,reason:'武器を選択してください'};
   const main=weapons[0]||null;
   const bonus=cards.filter(c=>isAttackModifier(c));
+  // 追加武器は通常武器への加算だけでなく、単独でも表示された攻撃力で攻撃できる。
+  if(!main&&!bonus.length)return {ok:false,reason:'攻撃できる神器を選択してください'};
   const atk=(main?.atk||0)+bonus.reduce((n,c)=>n+(c.atk||0),0);
   return {ok:true,attack:{
     source:'single',atk,element:combineElements(cards),

@@ -1,25 +1,31 @@
-import { GF, CARD, CARDS, makeGFQuestion, attackQuestionStars, globalQuestionStars, probabilityQuestionStars, cardQuestionStars, cardQuestionLabel } from './godfield-data.js?v=2.00-complete-004';
+import { GF, CARD, CARDS, makeGFQuestion, attackQuestionStars, globalQuestionStars, probabilityQuestionStars, cardQuestionStars, cardQuestionLabel } from './godfield-data.js?v=2.02-defense-question-001';
 import {
   PHASE, makePlayer, makeState, player, alive, drawToHand, consumeFromHand, pray,
   buildSingleAttack, isAttackModifier, defenseCompatible, resolveDefense as calcDefense, damagePlayer,
   healPlayer, addAilment, removeAilments, learnMiracle, advanceTurn, payForSale, validateExchange, clampHp
-} from './godfield-engine.js?v=2.00-complete-004';
+} from './godfield-engine.js?v=2.02-defense-question-001';
 import { randomInviteCode,normalizeInviteCode,randomPeerId,byteLength,P2P_MESSAGE_LIMIT_BYTES,safeStorageGet,safeStorageSet } from './security.js';
 import { getPublicProfile,rememberFriend,recordAnswerResult,recordMatchResult } from './profile.js';
-import { recordReviewMiss } from './review-storage.js?v=2.00-complete-004';
+import { recordReviewMiss } from './review-storage.js?v=2.02-defense-question-001';
 
 const $=id=>document.getElementById(id);
-const BUILD='2.00';
+const BUILD='2.02';
 const ROOM_PREFIX='academia-gf2-room-';
 const BATTLE_PREFIX='academia-gf2-battle-';
 const TRANSITION_KEY='academia-gf2-transition';
 const TRANSITION_TTL_MS=2*60*60*1000;
+const SETTINGS_KEY='academia-gf2-settings-v1';
+const QUESTION_DISPLAY_MODES=new Set(['inline','overlay']);
 
 let peer=null, role=null, hostConn=null, guests=new Map();
 let localPid=null, roomCode='', state=null, publicState=null;
 let hand=[], learned=[], activeQuestion=null, questionView=null, pendingDefense=null, pendingTrade=null;
 let groupQueue=[], singleStrikeQueue=[], selectedDefenseSlots=[], selectedTarget='', logs=[], timerId=null, deadline=0;
 let logRevision=0,lastRenderedLogRevision=-1,lastTimerText='',timerTotalMs=GF.ANSWER_MS,currentPresentation=null;
+let questionDisplayMode=(()=>{
+  const saved=safeStorageGet(SETTINGS_KEY);
+  return QUESTION_DISPLAY_MODES.has(saved?.questionDisplayMode)?saved.questionDisplayMode:'inline';
+})();
 const disconnectGraceTimers=new Map();
 
 const now=()=>Date.now();
@@ -127,7 +133,7 @@ function mountBattleView(code,players=[]){
   document.body.className='gf2-body';
   document.body.dataset.gfBattle='1';
   document.body.dataset.gfBuild=BUILD;
-  document.title='学歴召喚 G.F. Ver.2.00';
+  document.title='学歴召喚 G.F. Ver.2.02';
 
   // ページ遷移しない。URLもindex.htmlのままなので、
   // ブラウザがGodField開始時にWebRTCを切るきっかけを作らない。
@@ -135,7 +141,7 @@ function mountBattleView(code,players=[]){
     window.history.pushState(
       {gfBattle:true,code},
       '',
-      `./godfield-battle.html?room=${encodeURIComponent(code)}&build=200`
+      `./godfield-battle.html?room=${encodeURIComponent(code)}&build=202`
     );
   }catch{}
 
@@ -241,13 +247,14 @@ function renderTimer(){
 function hideQuestion(){
   questionView=null;
   clearTimer();
-  const q=$('gf-question');if(q){q.hidden=true;q.classList.remove('spectator')}
+  const q=$('gf-question');if(q){q.hidden=true;q.classList.remove('spectator','answer-overlay')}
   const choices=$('gf-choices');if(choices){choices.replaceChildren();choices.dataset.locked='0'}
   if($('gf-q-word'))$('gf-q-word').textContent='';
   if($('gf-q-stars'))$('gf-q-stars').textContent='';
   if($('gf-q-role'))$('gf-q-role').textContent='8択 / 10秒';
   if($('gf-q-spectator')){$('gf-q-spectator').hidden=true;$('gf-q-spectator').textContent=''}
-  document.querySelector('.gf2-question-slot')?.classList.remove('active','spectating');
+  document.querySelector('.gf2-question-slot')?.classList.remove('active','spectating','overlay-active');
+  document.body?.classList.remove('gf-question-overlay-open');
 }
 function hideDefense(){
   pendingDefense=null;
@@ -376,7 +383,9 @@ function selectedShieldIds(){
 function targetPid(){
   if(selectedTarget)return selectedTarget;
   const sel=$('gf-target')?.value;
-  return sel||'';
+  if(sel)return sel;
+  const opponents=(publicState?.players||[]).filter(p=>p.alive&&p.pid!==localPid);
+  return opponents.length===1?opponents[0].pid:'';
 }
 function hasIds(h,ids){
   const x=[...h];
@@ -637,25 +646,46 @@ function processSingleStrikes(){
 function beginDefense(target,attack,origin){
   const p=hostPlayer(target);
   if(!p?.alive)return origin==='global'?processGlobalQueue():nextTurn();
-  pendingDefense={target,attack,origin};
+  pendingDefense={target,attack,origin,selectedShields:[]};
   state.phase=PHASE.DEFENSE;
   const payload={target,attack,origin,deadline:now()+GF.ANSWER_MS,duration:GF.ANSWER_MS};
   broadcast('DEFENSE_PROMPT',payload);
   if(target===localPid){receiveDefense(payload)}
   sync();
-  startTimer(GF.ANSWER_MS,()=>hostDefend(target,[]));
+  startTimer(GF.ANSWER_MS,()=>{
+    const selected=target===localPid?selectedShieldIds():(pendingDefense?.selectedShields||[]);
+    hostDefend(target,selected);
+  });
+}
+
+function validDefenseSelection(defender,shieldIds,attack){
+  let ids=Array.isArray(shieldIds)?shieldIds.slice(0,GF.MAX_HAND):[];
+  if(defender.ailments.includes('flash')&&ids.length>1)ids=ids.slice(0,1);
+  if(!hasIds(defender.hand,ids))return null;
+  const cards=ids.map(id=>CARD[id]);
+  if(cards.some(c=>!c)||!cards.every(c=>defenseCompatible(c,attack,ids)))return null;
+  return ids;
+}
+function hostSelectDefense(pid,shieldIds){
+  if(role!=='host'||!pendingDefense||pendingDefense.target!==pid)return;
+  const defender=hostPlayer(pid);if(!defender)return;
+  const ids=validDefenseSelection(defender,shieldIds,pendingDefense.attack);
+  if(ids)pendingDefense.selectedShields=ids;
+}
+function syncDefenseSelection(){
+  if(!pendingDefense||pendingDefense.target!==localPid)return;
+  const shields=selectedShieldIds();
+  if(role==='host')hostSelectDefense(localPid,shields);
+  else send(hostConn,'DEFENSE_SELECT',{shields});
 }
 
 function hostDefend(pid,shieldIds){
   if(role!=='host'||!pendingDefense||pendingDefense.target!==pid)return;
   const defender=hostPlayer(pid);if(!defender)return;
 
-  let ids=Array.isArray(shieldIds)?shieldIds.slice(0,GF.MAX_HAND):[];
-  if(defender.ailments.includes('flash')&&ids.length>1)ids=ids.slice(0,1);
-  if(!hasIds(defender.hand,ids))return;
-
-  const cards=ids.map(id=>CARD[id]).filter(Boolean);
-  if(!cards.every(c=>defenseCompatible(c,pendingDefense.attack,ids)))return;
+  const ids=validDefenseSelection(defender,shieldIds,pendingDefense.attack);
+  if(!ids)return;
+  const cards=ids.map(id=>CARD[id]);
 
   clearTimer();
   for(const id of ids){
@@ -793,7 +823,7 @@ function hostUse(pid,uses,target){
   const built=buildSingleAttack(cards);
   if(!built.ok){log(built.reason);return}
   const t=hostPlayer(target);
-  if(!t?.alive)return log('対象を選択してください');
+  if(!t?.alive||t.pid===p.pid)return log('攻撃する相手を選択してください');
   const consumed=consumeActionUses(p,uses);
   if(!consumed.ok)return log(consumed.reason);
   const attack={...built.attack,actor:pid};
@@ -1002,6 +1032,7 @@ function sendTrade(confirm){
 function receiveQuestion(d){questionView=d;renderQuestion(d)}
 function receiveDefense(d){
   hideQuestion();
+  selectedDefenseSlots=[];
   pendingDefense=d;
   renderDefense();
   renderHand();
@@ -1076,6 +1107,7 @@ function receive(msg,conn=null){
       return hostAnswer(pid,d.qid,d.choice);
     }
     if(msg.type==='DEFEND')return hostDefend(pid,d.shields);
+    if(msg.type==='DEFENSE_SELECT'){hostSelectDefense(pid,d.shields);return}
     if(msg.type==='PRAY')return hostPray(pid);
     if(msg.type==='TRADE_CHOICE')return hostTradeChoice(pid,d);
     if(msg.type==='LEAVE')return disconnectPlayer(pid);
@@ -1619,7 +1651,7 @@ function renderHand(){
         b.onclick=()=>{
           const i=selectedDefenseSlots.indexOf(slot);
           if(i>=0)selectedDefenseSlots.splice(i,1);else selectedDefenseSlots.push(slot);
-          renderHand();renderDefense();
+          syncDefenseSelection();renderHand();renderDefense();
         };
       }
     }else{
@@ -1679,6 +1711,7 @@ function renderQuestion(d){
   slot?.classList.toggle('spectating',!can);
   box.hidden=false;
   box.classList.toggle('spectator',!can);
+  applyQuestionDisplayMode();
 
   $('gf-q-word').textContent=d.word;
   $('gf-q-stars').textContent=(d.stars===0?'★0':'★'.repeat(d.stars));
@@ -1741,9 +1774,29 @@ function renderLog(){
   }
   b.replaceChildren(frag);
 }
+function applyQuestionDisplayMode(){
+  const select=$('gf-question-display-mode');
+  if(select)select.value=questionDisplayMode;
+  const box=$('gf-question');
+  const slot=document.querySelector('.gf2-question-slot');
+  const overlay=Boolean(box&&!box.hidden&&questionDisplayMode==='overlay'&&canLocalAnswerQuestion(questionView));
+  box?.classList.toggle('answer-overlay',overlay);
+  slot?.classList.toggle('overlay-active',overlay);
+  document.body?.classList.toggle('gf-question-overlay-open',overlay);
+}
+function setQuestionDisplayMode(mode){
+  questionDisplayMode=QUESTION_DISPLAY_MODES.has(mode)?mode:'inline';
+  safeStorageSet(SETTINGS_KEY,{questionDisplayMode});
+  applyQuestionDisplayMode();
+}
 function render(){renderPlayers();renderHand();renderHeader();renderLog()}
 
 function bindBattle(){
+  const questionMode=$('gf-question-display-mode');
+  if(questionMode){
+    questionMode.value=questionDisplayMode;
+    questionMode.addEventListener('change',()=>setQuestionDisplayMode(questionMode.value));
+  }
   window.addEventListener('popstate',()=>{
     if(document.body?.dataset?.gfBattle==='1')location.href='./index.html?tab=godfield';
   },{once:true});
@@ -1788,7 +1841,7 @@ export function initGodFieldBattle(){
   const htmlBuild=document.body?.dataset?.gfBuild||'';
   if(htmlBuild!==BUILD){
     const q=new URLSearchParams(location.search);
-    location.replace(`./godfield-battle.html?room=${encodeURIComponent(q.get('room')||'')}&t=${Date.now()}&build=200`);
+    location.replace(`./godfield-battle.html?room=${encodeURIComponent(q.get('room')||'')}&t=${Date.now()}&build=202`);
     return;
   }
   bindBattle();

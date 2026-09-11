@@ -16,12 +16,12 @@
   <link rel="stylesheet" href="./style.css">
   <script src="./access-gate.js?v=2.00-complete-004"></script>
   <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js" referrerpolicy="no-referrer"></script>
-  <script type="module" src="./app.js?v=2.00-complete-004"></script>
+  <script type="module" src="./app.js?v=2.02-defense-question-001"></script>
   <link rel="stylesheet" href="./crystal.css">
   <link rel="stylesheet" href="./collab-cinema.css">
   <link rel="stylesheet" href="./fullcredit-cinema.css">
   <link rel="stylesheet" href="./duel.css?v=2.00-complete-004">
-  <link rel="stylesheet" href="./godfield.css?v=2.00-complete-004">
+  <link rel="stylesheet" href="./godfield.css?v=2.02-defense-question-001">
 </head>
 <body>
   <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
@@ -217,7 +217,8 @@
   <header class="gf2-topbar">
     <button id="gf-leave" class="gf2-back" type="button">←</button>
     <div><strong>G.F. × ENGLISH</strong><small>ACADEMIC DUEL · FINAL</small></div>
-    <div class="gf2-status"><em class="gf2-version">Ver.2.00</em><span id="gf-status">接続中…</span><b id="gf-timer"></b></div>
+    <label class="gf2-question-setting" for="gf-question-display-mode"><span>問題表示</span><select id="gf-question-display-mode"><option value="inline">通常位置</option><option value="overlay">回答中だけ前面</option></select></label>
+    <div class="gf2-status"><em class="gf2-version">Ver.2.02</em><span id="gf-status">接続中…</span><b id="gf-timer"></b></div>
   </header>
 
 
@@ -294,7 +295,7 @@
           <span id="gf-defense-count">0枚 / 守0</span>
         </div>
         <p id="gf-defense-text"></p>
-        <small>中央の手札で明るい防具を好きな枚数選択</small>
+        <small>中央の手札で防具を選択。決定を押さなくても時間切れ時に選択分を自動使用します。</small>
         <div class="gf2-defense-actions">
           <button id="gf-defend" type="button" disabled>選択防具で防御</button>
           <button id="gf-take" type="button">許す</button>
