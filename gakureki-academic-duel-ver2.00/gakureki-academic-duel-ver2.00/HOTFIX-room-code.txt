@@ -1,3 +1,0 @@
-Ver.1.11 communication hotfix 2
-Fixed ReferenceError: createVisibleRoomCode is not defined.
-Invite code is now generated and displayed immediately before PeerJS initialization.
