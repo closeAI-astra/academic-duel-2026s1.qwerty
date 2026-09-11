@@ -1,4 +1,4 @@
-import { GF, CARD, drawArtifact } from './godfield-data.js?v=2.00-final-008';
+import { GF, CARD, drawArtifact } from './godfield-data.js?v=2.00-final-009';
 
 export const PHASE = Object.freeze({
   LOBBY:'lobby', TURN:'turn', QUESTION:'question', GROUP:'group-question',
