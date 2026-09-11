@@ -3,7 +3,7 @@ import { PACK_CARD_BY_ID } from './crystal-data.js';
 import { CARD_BY_ID } from './data.js';
 import { safeStorageGet, safeStorageSet, byteLength, P2P_MESSAGE_LIMIT_BYTES, INVITE_CODE_LENGTH, randomInviteCode, normalizeInviteCode, randomPeerId, randomUint32, exactKeys, safeInt } from './security.js';
 import { getPublicProfile, validPublicProfile, rememberFriend, recordAnswerResult, recordMatchResult, appendProfileBadge, renderProfile } from './profile.js';
-import { getReviewState, recordReviewMiss, clearReviewHistory } from './review-storage.js?v=2.00-final-008';
+import { getReviewState, recordReviewMiss, clearReviewHistory } from './review-storage.js?v=2.00-complete-004';
 
 const $=id=>document.getElementById(id), DUEL_KEY='academia-duel-v5', PROTOCOL=5, ROOM_PREFIX='academia-duel-room-';
 let saved={deck:[],koTarget:DEFAULT_KO_TO_WIN},peer=null,conn=null,role=null,remoteDeck=null,remoteProfile=null,battle=null,pending=null,qCounter=0,logs=[],messageTimes=[];
@@ -287,6 +287,7 @@ function connectDuelGuest(code){
   c.on('open',()=>{
     if(done)return;
     opened=true;done=true;
+    guestConnectAttempt=0;
     clearTimeout(guestConnectTimer);
     wire(c);
   });

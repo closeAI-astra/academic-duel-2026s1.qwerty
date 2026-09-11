@@ -330,3 +330,131 @@
   .gf2-timer-track{height:16px}
   #gf-timer-label{font-size:18px}
 }
+
+
+/* Ver.2.00 COMPLETE-COLOR — hand card color coding */
+.gf2-card{
+  position:relative;
+  overflow:hidden;
+}
+.gf2-card::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:0;
+  bottom:0;
+  width:4px;
+  background:#343944;
+  opacity:.9;
+}
+.gf2-card[data-tone="fire"]{
+  border-color:#7d403d;
+  background:linear-gradient(90deg,#29100f 0,#11151c 34%);
+}
+.gf2-card[data-tone="fire"]::before{background:#ef5a4f}
+
+.gf2-card[data-tone="water"]{
+  border-color:#315f7d;
+  background:linear-gradient(90deg,#0d1e2a 0,#11151c 34%);
+}
+.gf2-card[data-tone="water"]::before{background:#4da8ea}
+
+.gf2-card[data-tone="wood"]{
+  border-color:#356744;
+  background:linear-gradient(90deg,#0d2113 0,#11151c 34%);
+}
+.gf2-card[data-tone="wood"]::before{background:#58b86d}
+
+.gf2-card[data-tone="earth"]{
+  border-color:#755434;
+  background:linear-gradient(90deg,#26190d 0,#11151c 34%);
+}
+.gf2-card[data-tone="earth"]::before{background:#bd864c}
+
+.gf2-card[data-tone="light"]{
+  border-color:#867642;
+  background:linear-gradient(90deg,#29240f 0,#11151c 34%);
+}
+.gf2-card[data-tone="light"]::before{background:#f2d873}
+
+.gf2-card[data-tone="dark"]{
+  border-color:#50417c;
+  background:linear-gradient(90deg,#19122c 0,#11151c 34%);
+}
+.gf2-card[data-tone="dark"]::before{background:#8264d8}
+
+.gf2-card[data-tone="drain"]{
+  border-color:#71458e;
+  background:linear-gradient(90deg,#24112e 0,#11151c 34%);
+}
+.gf2-card[data-tone="drain"]::before{background:#b166e7}
+
+.gf2-card[data-tone="exchange"]{
+  border-color:#807044;
+  background:linear-gradient(90deg,#29230e 0,#11151c 34%);
+}
+.gf2-card[data-tone="exchange"]::before{background:#e8ca57}
+
+.gf2-card[data-tone="buy"]{
+  border-color:#7d403d;
+  background:linear-gradient(90deg,#29100f 0,#11151c 34%);
+}
+.gf2-card[data-tone="buy"]::before{background:#ef5a4f}
+
+.gf2-card[data-tone="sell"]{
+  border-color:#315f7d;
+  background:linear-gradient(90deg,#0d1e2a 0,#11151c 34%);
+}
+.gf2-card[data-tone="sell"]::before{background:#4da8ea}
+
+/* Do not rely on color alone: every colored card gets text badges too. */
+.gf2-card-tags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+  margin:5px 0 4px;
+  pointer-events:none;
+}
+.gf2-card-tag{
+  display:inline-flex;
+  align-items:center;
+  min-height:17px;
+  padding:1px 6px;
+  border:1px solid #4a505a;
+  border-radius:999px;
+  background:#090c11c9;
+  color:#c7cbd2;
+  font-size:8px;
+  font-style:normal;
+  font-weight:800;
+  letter-spacing:.06em;
+  white-space:nowrap;
+}
+.gf2-card-tag[data-tone="fire"],
+.gf2-card-tag[data-tone="buy"]{border-color:#ef5a4f;color:#ffaaa3}
+.gf2-card-tag[data-tone="water"],
+.gf2-card-tag[data-tone="sell"]{border-color:#4da8ea;color:#a9d8f7}
+.gf2-card-tag[data-tone="wood"]{border-color:#58b86d;color:#ace1b8}
+.gf2-card-tag[data-tone="earth"]{border-color:#bd864c;color:#e3c19b}
+.gf2-card-tag[data-tone="light"],
+.gf2-card-tag[data-tone="exchange"]{border-color:#e8ca57;color:#f0dfa0}
+.gf2-card-tag[data-tone="dark"]{border-color:#8264d8;color:#c6b7f4}
+.gf2-card-tag[data-tone="drain"]{border-color:#b166e7;color:#deb8f3}
+
+/* Selection/defense state remains more important than category color. */
+.gf2-card.selected{
+  border-color:var(--gold);
+  box-shadow:0 0 0 2px #d5b35f55,0 7px 18px #0005;
+}
+.gf2-card.defense-usable{
+  box-shadow:0 0 0 1px #6d89a988;
+}
+.gf2-card.defense-selected{
+  border-color:var(--gold);
+  box-shadow:0 0 0 2px #d5b35f66;
+}
+
+@media(max-width:700px){
+  .gf2-card-tags{gap:3px;margin:4px 0 3px}
+  .gf2-card-tag{font-size:7px;padding:1px 5px}
+}

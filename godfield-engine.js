@@ -1,4 +1,4 @@
-import { GF, CARD, drawArtifact } from './godfield-data.js?v=2.00-complete-001';
+import { GF, CARD, drawArtifact } from './godfield-data.js?v=2.00-complete-004';
 
 export const PHASE = Object.freeze({
   LOBBY:'lobby', TURN:'turn', QUESTION:'question', GROUP:'group-question',
@@ -136,10 +136,13 @@ export function resolveDefense(attack,shieldCards){
 }
 export function damagePlayer(p,amount,{dark=false}={}){
   const dmg=Math.max(0,Math.trunc(Number(amount)||0));
-  p.hp=clampHp(p.hp-dmg);
+  const before=clampHp(p.hp);
+  p.hp=clampHp(before-dmg);
   if(dark&&dmg>0)p.hp=0;
   if(p.hp<=0){p.hp=0;p.alive=false}
-  return dmg;
+  // Return the HP actually lost, not the requested damage amount.
+  // This keeps drain/reflect logs and the large DAMAGE readout truthful.
+  return Math.max(0,before-p.hp);
 }
 export function healPlayer(p,amount){
   const before=p.hp;p.hp=clampHp(p.hp+Math.max(0,Math.trunc(Number(amount)||0)));
