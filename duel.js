@@ -3,8 +3,9 @@ import { PACK_CARD_BY_ID } from './crystal-data.js';
 import { CARD_BY_ID } from './data.js';
 import { safeStorageGet, safeStorageSet, byteLength, P2P_MESSAGE_LIMIT_BYTES, INVITE_CODE_LENGTH, randomInviteCode, normalizeInviteCode, randomPeerId, randomUint32, exactKeys, safeInt } from './security.js';
 import { getPublicProfile, validPublicProfile, rememberFriend, recordAnswerResult, recordMatchResult, appendProfileBadge, renderProfile } from './profile.js';
+import { getReviewState, recordReviewMiss, clearReviewHistory } from './review-storage.js?v=2.00-final-008';
 
-const $=id=>document.getElementById(id), DUEL_KEY='academia-duel-v5', REVIEW_KEY='academia-vocab-review-v1', REVIEW_MAX_ITEMS=150, PROTOCOL=5, ROOM_PREFIX='academia-duel-room-';
+const $=id=>document.getElementById(id), DUEL_KEY='academia-duel-v5', PROTOCOL=5, ROOM_PREFIX='academia-duel-room-';
 let saved={deck:[],koTarget:DEFAULT_KO_TO_WIN},peer=null,conn=null,role=null,remoteDeck=null,remoteProfile=null,battle=null,pending=null,qCounter=0,logs=[],messageTimes=[];
 let localReady=false,remoteReady=false,startSent=false,startAck=false,readyTimer=null,startTimer=null;
 let lastQuestionWord='', cutinTimer=null,matchStatsRecorded=false,duelFxLock=false,creditChainTimer=null,guestConnectTimer=null,guestConnectAttempt=0;
@@ -49,13 +50,17 @@ function updateKoUi(){
   setText('duel-ko-info', role==='guest'&&remoteReady ? `ホスト設定：${target}体KOで勝利` : `ホストが設定したKO数で勝敗が決まります。現在: ${target}体KO`);
 }
 function reviewState(){
-  const raw=safeStorageGet(REVIEW_KEY),items=Array.isArray(raw?.items)?raw.items:[];
-  const clean=items.filter(x=>x&&typeof x.w==='string'&&x.w.length<=40&&typeof x.m==='string'&&x.m.length<=80&&Number.isSafeInteger(x.c)&&x.c>0&&x.c<=999&&typeof x.d==='string'&&x.d.length<=10).slice(0,REVIEW_MAX_ITEMS);
-  return {season:ACTIVE_SEASON,items:raw?.season===ACTIVE_SEASON?clean:[]};
+  return getReviewState();
 }
-function saveReview(state){state.items=state.items.slice(0,REVIEW_MAX_ITEMS);while(state.items.length&&!safeStorageSet(REVIEW_KEY,state))state.items.pop();updateReviewCount(state.items.length);}
-function updateReviewCount(n=reviewState().items.length){setText('review-count',String(n));}
-function recordMiss(word,meaning){if(typeof word!=='string'||typeof meaning!=='string')return;const state=reviewState(),today=new Date().toISOString().slice(0,10),found=state.items.find(x=>x.w===word);if(found){found.c=Math.min(999,found.c+1);found.m=meaning;found.d=today;state.items=state.items.filter(x=>x!==found);state.items.unshift(found);}else state.items.unshift({w:word,m:meaning,c:1,d:today});saveReview(state);renderReview();}
+function updateReviewCount(n=reviewState().items.length){
+  setText('review-count',String(n));
+}
+function recordMiss(word,meaning){
+  if(typeof word!=='string'||typeof meaning!=='string')return;
+  const state=recordReviewMiss(word,meaning);
+  updateReviewCount(state.items.length);
+  renderReview();
+}
 function rememberMistakeFromChoice(p,choice){
   if(!battle||!p)return;
   const q=buildQuestion(battle,p); if(!q) return;
@@ -417,5 +422,5 @@ export function initDuel(){
     if(button)removeDeckCard(button.dataset.duelRemove);
   });$('duel-join-code').addEventListener('input',e=>{e.target.value=normalizeInviteCode(e.target.value);});$('duel-ko-target')?.addEventListener('change',e=>{const v=Number(e.target.value); if(Number.isSafeInteger(v)){saved.koTarget=Math.max(MIN_KO_TO_WIN,Math.min(MAX_KO_TO_WIN,v)); resetReadiness('勝利条件を変更したためREADYを解除しました。'); persist(); renderDeck(); updateKoUi();}});$('duel-start').addEventListener('click',ready);$('duel-auto').addEventListener('click',autoDeck);$('duel-clear').addEventListener('click',()=>{saved.deck=[];resetReadiness();persist();renderDeck();});
   $('duel-go-summon').addEventListener('click',()=>$('summon-tab').click());$('duel-go-collection').addEventListener('click',()=>$('collection-tab').click());$('duel-tab').addEventListener('click',()=>setTimeout(renderDeck,0));
-  $('duel-speak-word')?.addEventListener('click',()=>speakWord(lastQuestionWord));$('duel-abort')?.addEventListener('click',abortBattle);$('review-clear')?.addEventListener('click',()=>{safeStorageSet(REVIEW_KEY,{season:ACTIVE_SEASON,items:[]});renderReview();announce('復習履歴を消去しました。');});window.addEventListener('storage',()=>{renderDeck();renderReview(); updateKoUi();});document.addEventListener('visibilitychange',()=>{if(!document.hidden){renderDeck();renderReview(); updateKoUi();}});renderDeck();renderLog();renderNetState();renderReview(); updateKoUi();
+  $('duel-speak-word')?.addEventListener('click',()=>speakWord(lastQuestionWord));$('duel-abort')?.addEventListener('click',abortBattle);$('review-clear')?.addEventListener('click',()=>{clearReviewHistory();renderReview();announce('復習履歴を消去しました。');});window.addEventListener('storage',()=>{renderDeck();renderReview(); updateKoUi();});document.addEventListener('visibilitychange',()=>{if(!document.hidden){renderDeck();renderReview(); updateKoUi();}});renderDeck();renderLog();renderNetState();renderReview(); updateKoUi();
 }

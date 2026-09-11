@@ -1,4 +1,4 @@
-import { makeGodFieldQuestion } from './godfield-questions.js?v=2.00-final-007';
+import { makeGodFieldQuestion } from './godfield-questions.js?v=2.00-final-008';
 
 export const GF = Object.freeze({
   MAX_PLAYERS: 5,

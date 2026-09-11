@@ -1,2 +1,2 @@
-import { initGodFieldBattle } from './godfield.js?v=2.00-final-007';
+import { initGodFieldBattle } from './godfield.js?v=2.00-final-008';
 try{initGodFieldBattle()}catch(e){console.error(e);const s=document.getElementById('gf-status');if(s)s.textContent='初期化エラー: '+(e?.message||'unknown')}

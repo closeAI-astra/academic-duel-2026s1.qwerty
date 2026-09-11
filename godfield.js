@@ -1,18 +1,18 @@
-import { GF, CARD, CARDS, makeGFQuestion, attackQuestionStars, globalQuestionStars, probabilityQuestionStars, cardQuestionStars, cardQuestionLabel } from './godfield-data.js?v=2.00-final-007';
+import { GF, CARD, CARDS, makeGFQuestion, attackQuestionStars, globalQuestionStars, probabilityQuestionStars, cardQuestionStars, cardQuestionLabel } from './godfield-data.js?v=2.00-final-008';
 import {
   PHASE, makePlayer, makeState, player, alive, drawToHand, consumeFromHand, pray,
   buildSingleAttack, isAttackModifier, defenseCompatible, resolveDefense as calcDefense, damagePlayer,
   healPlayer, addAilment, removeAilments, learnMiracle, advanceTurn, payForSale, validateExchange, clampHp
-} from './godfield-engine.js?v=2.00-final-007';
+} from './godfield-engine.js?v=2.00-final-008';
 import { randomInviteCode,normalizeInviteCode,randomPeerId,byteLength,P2P_MESSAGE_LIMIT_BYTES,safeStorageGet,safeStorageSet } from './security.js';
 import { getPublicProfile,rememberFriend,recordAnswerResult,recordMatchResult } from './profile.js';
+import { recordReviewMiss } from './review-storage.js?v=2.00-final-008';
 
 const $=id=>document.getElementById(id);
 const BUILD='2.00';
 const ROOM_PREFIX='academia-gf2-room-';
 const BATTLE_PREFIX='academia-gf2-battle-';
 const TRANSITION_KEY='academia-gf2-transition';
-const REVIEW_KEY='academia-vocab-review-v1';
 
 let peer=null, role=null, hostConn=null, guests=new Map();
 let localPid=null, roomCode='', state=null, publicState=null;
@@ -286,10 +286,7 @@ function showPresentation(d){
 }
 function recordReview(word,meaning){
   if(!word||!meaning)return;
-  const list=safeStorageGet(REVIEW_KEY,[]);
-  const arr=Array.isArray(list)?list:[];
-  if(!arr.some(x=>x?.word===word))arr.unshift({word,meaning,misses:1,lastMiss:Date.now()});
-  safeStorageSet(REVIEW_KEY,arr.slice(0,500));
+  recordReviewMiss(word,meaning);
 }
 
 function elementLabel(e){return ({none:'無',fire:'火',water:'水',wood:'木',earth:'土',light:'光',dark:'闇'})[e||'none']||'無'}

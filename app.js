@@ -9,8 +9,8 @@ import { playOsakaCinema, playGraduateCinema, stopOsakaCinema } from './cinema.j
 import { playCollabCinema, stopCollabCinema } from './collab-cinema.js';
 import { playFullCreditCinema, stopFullCreditCinema } from './fullcredit-cinema.js';
 import { initCardMotion } from './card-motion.js';
-import { initDuel, renderReview } from './duel.js?v=2.00-final-007';
-import { initGodField } from './godfield.js?v=2.00-final-007';
+import { initDuel, renderReview } from './duel.js?v=2.00-final-008';
+import { initGodField } from './godfield.js?v=2.00-final-008';
 import { initProfile, renderProfile } from './profile.js';
 import { safeStorageGet, safeStorageSet } from './security.js';
 
