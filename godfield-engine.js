@@ -1,4 +1,4 @@
-import { GF, CARD, drawArtifact } from './godfield-data.js';
+import { GF, CARD, drawArtifact } from './godfield-data.js?v=2.00-final-007';
 
 export const PHASE = Object.freeze({
   LOBBY:'lobby', TURN:'turn', QUESTION:'question', GROUP:'group-question',
@@ -105,18 +105,34 @@ export function resolveDefense(attack,shieldCards){
   const effective={...attack};
   if(shieldCards.some(c=>c.effect==='remove-element'))effective.element='none';
 
-  // 選択順で最初に成立する特殊防御を採用。
+  // 原作定義:
+  // はね返す = 攻撃者へ返す
+  // 弾く = 自分を含む全預言者の誰かへ返す
+  // 止める = 完全防御
+  // 返された攻撃は再防御できない（再防御禁止はcontroller側で直接ダメージ処理）。
   for(const c of shieldCards){
-    if(c.effect==='reflect-all')return {kind:'reflect',damage:0,def:0,attack:effective,card:c};
-    if(c.effect==='reflect-none'&&effective.source!=='miracle'&&effective.element==='none')return {kind:'reflect',damage:0,def:0,attack:effective,card:c};
-    if(effective.source==='miracle'){
-      if(c.effect==='reflect-miracle')return {kind:'reflect',damage:0,def:0,attack:effective,card:c};
-      if(c.effect==='stop-miracle')return {kind:'stop',damage:0,def:0,attack:effective,card:c};
-      if(c.effect==='bounce-miracle')return {kind:'bounce',damage:0,def:0,attack:effective,card:c};
+    if(c.effect==='reflect-all'){
+      return {kind:'reflect',damage:0,def:0,attack:effective,card:c,noRedefense:true};
+    }
+    // 虹のカーテンで奇跡を無属性化しても、反射剣では反射できない。
+    if(c.effect==='reflect-none'&&attack.source!=='miracle'&&effective.element==='none'){
+      return {kind:'reflect',damage:0,def:0,attack:effective,card:c,noRedefense:true};
+    }
+    if(attack.source==='miracle'){
+      if(c.effect==='reflect-miracle'){
+        return {kind:'reflect',damage:0,def:0,attack:effective,card:c,noRedefense:true};
+      }
+      if(c.effect==='stop-miracle'){
+        return {kind:'stop',damage:0,def:0,attack:effective,card:c,noRedefense:true};
+      }
+      if(c.effect==='bounce-miracle'){
+        return {kind:'bounce',damage:0,def:0,attack:effective,card:c,noRedefense:true};
+      }
     }
   }
+
   const def=shieldCards.reduce((n,c)=>n+(c.def||0),0);
-  return {kind:'reduce',damage:Math.max(0,(attack.atk||0)-def),def,attack:effective};
+  return {kind:'reduce',damage:Math.max(0,(attack.atk||0)-def),def,attack:effective,noRedefense:false};
 }
 export function damagePlayer(p,amount,{dark=false}={}){
   const dmg=Math.max(0,Math.trunc(Number(amount)||0));

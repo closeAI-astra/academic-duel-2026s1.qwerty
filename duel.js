@@ -7,7 +7,7 @@ import { getPublicProfile, validPublicProfile, rememberFriend, recordAnswerResul
 const $=id=>document.getElementById(id), DUEL_KEY='academia-duel-v5', REVIEW_KEY='academia-vocab-review-v1', REVIEW_MAX_ITEMS=150, PROTOCOL=5, ROOM_PREFIX='academia-duel-room-';
 let saved={deck:[],koTarget:DEFAULT_KO_TO_WIN},peer=null,conn=null,role=null,remoteDeck=null,remoteProfile=null,battle=null,pending=null,qCounter=0,logs=[],messageTimes=[];
 let localReady=false,remoteReady=false,startSent=false,startAck=false,readyTimer=null,startTimer=null;
-let lastQuestionWord='', cutinTimer=null,matchStatsRecorded=false,duelFxLock=false,creditChainTimer=null;
+let lastQuestionWord='', cutinTimer=null,matchStatsRecorded=false,duelFxLock=false,creditChainTimer=null,guestConnectTimer=null,guestConnectAttempt=0;
 const answeredMistakeKeys=new Set(), answeredStatKeys=new Set();
 function speakWord(word){
   if(typeof word!=='string'||!word||!globalThis.speechSynthesis||!globalThis.SpeechSynthesisUtterance)return;
@@ -93,10 +93,31 @@ function deckError(deck=saved.deck,owned=ownedIds()){
 function cardThumb(card){const wrap=document.createElement('span');wrap.className='duel-thumb';wrap.setAttribute('aria-hidden','true');wrap.style.cssText=cardArtStyle(card);return wrap;}
 function resetReadiness(reason=''){
   localReady=false;remoteReady=false;remoteDeck=null;startSent=false;startAck=false;
-  clearInterval(readyTimer);clearInterval(startTimer);readyTimer=null;startTimer=null;
+  clearInterval(readyTimer);clearInterval(startTimer);clearTimeout(guestConnectTimer);guestConnectTimer=null;guestConnectAttempt=0;readyTimer=null;startTimer=null;
   if(reason)announce(reason);
   renderNetState();
   updateKoUi();
+}
+
+function addDeckCard(id){
+  const own=ownedIds(),c=duelCard(id);
+  if(!c||!own.has(id))return;
+  const candidate=[...saved.deck,id],err=deckError(candidate,own);
+  if(err){announce(err);return}
+  saved.deck=candidate;
+  resetReadiness();
+  persist();
+  renderDeck();
+  announce(`${c.name} をデッキに追加しました。`);
+}
+function removeDeckCard(id){
+  if(!saved.deck.includes(id))return;
+  const c=duelCard(id);
+  saved.deck=saved.deck.filter(x=>x!==id);
+  resetReadiness();
+  persist();
+  renderDeck();
+  announce(`${c?.name||'カード'} をデッキから外しました。`);
 }
 
 function renderDeck(){
@@ -106,10 +127,31 @@ function renderDeck(){
   persist();
   setText('duel-deck-count',`${saved.deck.length} / ${DECK_SIZE}`);
   setText('duel-deck-note',saved.deck.length===DECK_SIZE?`デッキ完成。カード図鑑で獲得済みのカードだけで構成されています。現在の勝利条件は${currentKoTarget()}体KO。`:`あと${DECK_SIZE-saved.deck.length}枚。S最大${MAX_S}・A最大${MAX_A}。`);
+
   const list=$('duel-deck-list');list.replaceChildren();
-  saved.deck.forEach((id,i)=>{const c=duelCard(id),row=document.createElement('div');row.className='duel-deck-row';row.append(cardThumb(c));const text=document.createElement('span');const strong=document.createElement('strong');strong.textContent=`${i+1}. ${c.name}`;const small=document.createElement('small');small.textContent=`${c.rank} · HP ${c.hp} · ${c.trait.name}`;text.append(strong,small);const b=document.createElement('button');b.className='outline-button';b.type='button';b.textContent='外す';b.addEventListener('click',()=>{saved.deck=saved.deck.filter(x=>x!==id);resetReadiness();persist();renderDeck();});row.append(text,b);list.append(row);});
+  saved.deck.forEach((id,i)=>{
+    const c=duelCard(id),row=document.createElement('div');
+    row.className='duel-deck-row';
+    row.append(cardThumb(c));
+    const text=document.createElement('span'),strong=document.createElement('strong'),small=document.createElement('small');
+    strong.textContent=`${i+1}. ${c.name}`;small.textContent=`${c.rank} · HP ${c.hp} · ${c.trait.name}`;
+    text.append(strong,small);
+    const b=document.createElement('button');
+    b.className='outline-button';b.type='button';b.textContent='外す';
+    b.dataset.duelRemove=id;
+    row.append(text,b);list.append(row);
+  });
+
   const pool=$('duel-card-pool');pool.replaceChildren();
-  DUEL_CARDS.filter(c=>own.has(c.id)&&!saved.deck.includes(c.id)).forEach(raw=>{const c=duelCard(raw.id),b=document.createElement('button');b.type='button';b.className='duel-pool-card';b.append(cardThumb(c));const s=document.createElement('span');const st=document.createElement('strong');st.textContent=c.name;const sm=document.createElement('small');sm.textContent=`${c.rank} · ${c.trait.name}`;s.append(st,sm);b.append(s);b.addEventListener('click',()=>{const candidate=[...saved.deck,c.id],err=deckError(candidate,own);if(err){announce(err);return;}saved.deck=candidate;resetReadiness();persist();renderDeck();});pool.append(b);});
+  DUEL_CARDS.filter(c=>own.has(c.id)&&!saved.deck.includes(c.id)).forEach(raw=>{
+    const c=duelCard(raw.id),b=document.createElement('button');
+    b.type='button';b.className='duel-pool-card';b.dataset.duelAdd=c.id;
+    b.setAttribute('aria-label',`${c.name}をデッキに追加`);
+    b.append(cardThumb(c));
+    const copy=document.createElement('span'),st=document.createElement('strong'),sm=document.createElement('small');
+    st.textContent=c.name;sm.textContent=`${c.rank} · ${c.trait.name}`;
+    copy.append(st,sm);b.append(copy);pool.append(b);
+  });
   renderNetState();
 }
 function autoDeck(){const own=ownedIds(),sorted=DUEL_CARDS.filter(c=>own.has(c.id)).sort((a,b)=>'SABCDEF'.indexOf(a.rank)-'SABCDEF'.indexOf(b.rank));let deck=[];for(const c of sorted){const next=[...deck,c.id];if(next.length<=DECK_SIZE&&!deckError(next,own))deck=next;if(deck.length===DECK_SIZE)break;}saved.deck=deck;resetReadiness();persist();renderDeck();}
@@ -203,10 +245,56 @@ function playCreditChainEvents(events){
   clearTimeout(creditChainTimer);duelFxLock=true;box.hidden=false;box.classList.remove('active');void box.offsetWidth;box.classList.add('active');renderBattle();
   creditChainTimer=setTimeout(()=>{box.classList.remove('active');box.hidden=true;duelFxLock=false;renderBattle();},1650);
 }
+function duelPeerOptions(){
+  return {
+    debug:0,
+    config:{
+      iceServers:[
+        {urls:'stun:stun.l.google.com:19302'},
+        {urls:'stun:stun1.l.google.com:19302'}
+      ]
+    }
+  };
+}
+function makeDuelPeer(id){return new Peer(id,duelPeerOptions())}
+
+function connectDuelGuest(code){
+  if(role!=='guest'||!peer||peer.destroyed||conn?.open)return;
+  const attempt=++guestConnectAttempt;
+  status(`接続中… ${attempt}/10`);
+
+  const c=peer.connect(ROOM_PREFIX+code,{reliable:true,serialization:'json'});
+  let opened=false,done=false;
+
+  const retry=()=>{
+    if(done||opened||conn?.open||role!=='guest')return;
+    done=true;
+    if(conn===c)conn=null;
+    try{c.close()}catch{}
+    if(attempt<10){
+      guestConnectTimer=setTimeout(()=>connectDuelGuest(code),550+attempt*120);
+    }else{
+      status('接続できませんでした');
+      announce('招待コードは正しい場合でも、通信環境によってP2P接続できないことがあります。Wi-Fi/モバイル回線を切り替えて再試行してください。');
+    }
+  };
+
+  c.on('open',()=>{
+    if(done)return;
+    opened=true;done=true;
+    clearTimeout(guestConnectTimer);
+    wire(c);
+  });
+  c.on('error',()=>retry());
+  c.on('close',()=>{if(!opened)retry()});
+  guestConnectTimer=setTimeout(retry,2800);
+}
+
 function wire(c){
   if(conn&&conn.open){try{c.close();}catch{}return;}
   conn=c;
-  c.on('open',()=>{status('接続済み · READY待ち');announce('P2P接続に成功しました。両者が「準備完了」を押してください。');log('DataChannel接続済み。');renderDeck();renderNetState();});
+  const onOpen=()=>{status('接続済み · READY待ち');announce('P2P接続に成功しました。両者が「準備完了」を押してください。');log('DataChannel接続済み。');renderDeck();renderNetState();};
+  if(c.open)onOpen();else c.on('open',onOpen);
   c.on('data',receive);c.on('close',()=>disconnect('相手との接続が切れました。'));c.on('error',()=>disconnect('通信エラーが発生しました。'));
 }
 function createVisibleRoomCode(){
@@ -228,7 +316,7 @@ function makeRoom(){
     }
     try{
       status('部屋を作成中…');
-      peer=new Peer(ROOM_PREFIX+code);
+      peer=makeDuelPeer(ROOM_PREFIX+code);
       peer.on('open',()=>status(`待機中 · ${code}`));
       peer.on('connection',wire);
       peer.on('error',e=>{
@@ -258,9 +346,16 @@ function joinRoom(){
   }
   status('接続中…');
   try{
-    peer=new Peer(randomPeerId());
-    peer.on('open',()=>wire(peer.connect(ROOM_PREFIX+code,{reliable:true,serialization:'json'})));
-    peer.on('error',()=>disconnect('招待コードまたは通信環境を確認してください。'));
+    peer=makeDuelPeer(randomPeerId());
+    peer.on('open',()=>connectDuelGuest(code));
+    peer.on('error',e=>{
+      if(e?.type==='peer-unavailable'&&guestConnectAttempt<10){
+        clearTimeout(guestConnectTimer);
+        guestConnectTimer=setTimeout(()=>connectDuelGuest(code),650);
+        return;
+      }
+      if(!conn?.open)status('通信エラー · 再接続中…');
+    });
   }catch{disconnect('通信初期化に失敗しました。');}
 }
 function ready(){
@@ -312,7 +407,15 @@ function renderBattle(){
 export function initDuel(){
   if(typeof $('duel-card-pool')?.replaceChildren!=='function')return;
   restore();setText('duel-season',ACTIVE_SEASON_INFO.title||ACTIVE_SEASON);setText('duel-season-number',ACTIVE_SEASON_INFO.number||'--');setText('duel-season-copy',`${ACTIVE_SEASON_INFO.subtitle||'現在の単語シーズン'}。今シーズンの単語セットで全対戦を行います。`);setText('duel-season-words',String(ACTIVE_SEASON_WORD_COUNT)); updateKoUi();
-  setText('duel-room-code','------');$('duel-join-code').maxLength=INVITE_CODE_LENGTH;$('duel-create-room').addEventListener('click',makeRoom);$('duel-join').addEventListener('click',joinRoom);$('duel-join-code').addEventListener('input',e=>{e.target.value=normalizeInviteCode(e.target.value);});$('duel-ko-target')?.addEventListener('change',e=>{const v=Number(e.target.value); if(Number.isSafeInteger(v)){saved.koTarget=Math.max(MIN_KO_TO_WIN,Math.min(MAX_KO_TO_WIN,v)); resetReadiness('勝利条件を変更したためREADYを解除しました。'); persist(); renderDeck(); updateKoUi();}});$('duel-start').addEventListener('click',ready);$('duel-auto').addEventListener('click',autoDeck);$('duel-clear').addEventListener('click',()=>{saved.deck=[];resetReadiness();persist();renderDeck();});
+  setText('duel-room-code','------');$('duel-join-code').maxLength=INVITE_CODE_LENGTH;$('duel-create-room').addEventListener('click',makeRoom);$('duel-join').addEventListener('click',joinRoom);
+  $('duel-card-pool')?.addEventListener('click',event=>{
+    const button=event.target.closest('button[data-duel-add]');
+    if(button)addDeckCard(button.dataset.duelAdd);
+  });
+  $('duel-deck-list')?.addEventListener('click',event=>{
+    const button=event.target.closest('button[data-duel-remove]');
+    if(button)removeDeckCard(button.dataset.duelRemove);
+  });$('duel-join-code').addEventListener('input',e=>{e.target.value=normalizeInviteCode(e.target.value);});$('duel-ko-target')?.addEventListener('change',e=>{const v=Number(e.target.value); if(Number.isSafeInteger(v)){saved.koTarget=Math.max(MIN_KO_TO_WIN,Math.min(MAX_KO_TO_WIN,v)); resetReadiness('勝利条件を変更したためREADYを解除しました。'); persist(); renderDeck(); updateKoUi();}});$('duel-start').addEventListener('click',ready);$('duel-auto').addEventListener('click',autoDeck);$('duel-clear').addEventListener('click',()=>{saved.deck=[];resetReadiness();persist();renderDeck();});
   $('duel-go-summon').addEventListener('click',()=>$('summon-tab').click());$('duel-go-collection').addEventListener('click',()=>$('collection-tab').click());$('duel-tab').addEventListener('click',()=>setTimeout(renderDeck,0));
   $('duel-speak-word')?.addEventListener('click',()=>speakWord(lastQuestionWord));$('duel-abort')?.addEventListener('click',abortBattle);$('review-clear')?.addEventListener('click',()=>{safeStorageSet(REVIEW_KEY,{season:ACTIVE_SEASON,items:[]});renderReview();announce('復習履歴を消去しました。');});window.addEventListener('storage',()=>{renderDeck();renderReview(); updateKoUi();});document.addEventListener('visibilitychange',()=>{if(!document.hidden){renderDeck();renderReview(); updateKoUi();}});renderDeck();renderLog();renderNetState();renderReview(); updateKoUi();
 }

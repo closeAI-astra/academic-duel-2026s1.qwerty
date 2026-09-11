@@ -1,9 +1,9 @@
-import { GF, CARD, CARDS, makeGFQuestion, attackQuestionStars, globalQuestionStars, probabilityQuestionStars } from './godfield-data.js?v=2.00-final-004';
+import { GF, CARD, CARDS, makeGFQuestion, attackQuestionStars, globalQuestionStars, probabilityQuestionStars, cardQuestionStars, cardQuestionLabel } from './godfield-data.js?v=2.00-final-007';
 import {
   PHASE, makePlayer, makeState, player, alive, drawToHand, consumeFromHand, pray,
   buildSingleAttack, isAttackModifier, defenseCompatible, resolveDefense as calcDefense, damagePlayer,
   healPlayer, addAilment, removeAilments, learnMiracle, advanceTurn, payForSale, validateExchange, clampHp
-} from './godfield-engine.js?v=2.00-final-004';
+} from './godfield-engine.js?v=2.00-final-007';
 import { randomInviteCode,normalizeInviteCode,randomPeerId,byteLength,P2P_MESSAGE_LIMIT_BYTES,safeStorageGet,safeStorageSet } from './security.js';
 import { getPublicProfile,rememberFriend,recordAnswerResult,recordMatchResult } from './profile.js';
 
@@ -18,6 +18,8 @@ let peer=null, role=null, hostConn=null, guests=new Map();
 let localPid=null, roomCode='', state=null, publicState=null;
 let hand=[], learned=[], activeQuestion=null, questionView=null, pendingDefense=null, pendingTrade=null;
 let groupQueue=[], singleStrikeQueue=[], selectedDefenseSlots=[], selectedTarget='', logs=[], timerId=null, deadline=0;
+let logRevision=0,lastRenderedLogRevision=-1,lastTimerText='',timerTotalMs=GF.ANSWER_MS,currentPresentation=null;
+const disconnectGraceTimers=new Map();
 
 const now=()=>Date.now();
 const rnd=()=>crypto?.getRandomValues?crypto.getRandomValues(new Uint32Array(1))[0]/4294967296:Math.random();
@@ -38,7 +40,19 @@ function send(conn,type,data={}){
 }
 function broadcast(type,data={}){for(const c of guests.values())send(c,type,data)}
 function status(text){if($('gf-status'))$('gf-status').textContent=safeText(text)}
-function log(text){logs.unshift(safeText(text));logs=logs.slice(0,50);renderLog()}
+const ACTION_TONES=new Set(['none','fire','water','wood','earth','light','dark','drain','exchange','buy','sell']);
+function cleanTone(tone){return ACTION_TONES.has(tone)?tone:'none'}
+function log(text,tone='none'){
+  logs.unshift({text:safeText(text),tone:cleanTone(tone)});
+  logs=logs.slice(0,80);
+  logRevision++;
+  renderLog();
+}
+function history(text,tone='none'){
+  const item={text:safeText(text),tone:cleanTone(tone)};
+  log(item.text,item.tone);
+  if(role==='host')broadcast('HISTORY',item);
+}
 function nameOf(pid){return (publicState?.players||[]).find(p=>p.pid===pid)?.profile?.name||'PLAYER'}
 function hostPlayer(pid){return state?player(state,pid):null}
 
@@ -66,20 +80,108 @@ function sync(){
   render();
 }
 
-function saveTransition(x){sessionStorage.setItem(TRANSITION_KEY,JSON.stringify(x))}
-function loadTransition(){try{return JSON.parse(sessionStorage.getItem(TRANSITION_KEY)||'null')}catch{return null}}
-function clearTransition(){sessionStorage.removeItem(TRANSITION_KEY)}
+const TRANSITION_BACKUP_KEY=TRANSITION_KEY+'-backup';
+function saveTransition(x){
+  const raw=JSON.stringify(x);
+  try{sessionStorage.setItem(TRANSITION_KEY,raw)}catch{}
+  try{localStorage.setItem(TRANSITION_BACKUP_KEY,raw)}catch{}
+}
+function loadTransition(){
+  let raw='';
+  try{raw=sessionStorage.getItem(TRANSITION_KEY)||''}catch{}
+  if(!raw){try{raw=localStorage.getItem(TRANSITION_BACKUP_KEY)||''}catch{}}
+  try{
+    const value=JSON.parse(raw||'null');
+    if(value&&now()-(value.created||0)<=300000)return value;
+  }catch{}
+  return null;
+}
+function clearTransition(){
+  try{sessionStorage.removeItem(TRANSITION_KEY)}catch{}
+  try{localStorage.removeItem(TRANSITION_BACKUP_KEY)}catch{}
+}
 function goBattle(code){location.href=`./godfield-battle.html?room=${encodeURIComponent(code)}&t=${Date.now()}&build=200`}
 
-function clearTimer(){if(timerId)clearInterval(timerId);timerId=null;deadline=0;renderTimer()}
-function startTimer(ms,onEnd){
-  clearTimer();deadline=now()+ms;
-  timerId=setInterval(()=>{renderTimer();if(now()>=deadline){clearTimer();onEnd()}},120);
+function stopTimerTicker(){
+  if(timerId)clearInterval(timerId);
+  timerId=null;
 }
-function renderTimer(){if($('gf-timer'))$('gf-timer').textContent=deadline?`${Math.max(0,Math.ceil((deadline-now())/1000))}`:''}
+function clearTimer(){
+  stopTimerTicker();
+  deadline=0;
+  timerTotalMs=GF.ANSWER_MS;
+  lastTimerText='';
+  renderTimer();
+}
+function setVisualTimer(end,total=GF.ANSWER_MS,onEnd=null){
+  stopTimerTicker();
+  deadline=Math.max(0,Number(end)||0);
+  timerTotalMs=Math.max(1,Number(total)||GF.ANSWER_MS);
+  let fired=false;
 
+  const tick=()=>{
+    renderTimer();
+    if(deadline&&now()>=deadline){
+      if(onEnd&&!fired){
+        fired=true;
+        stopTimerTicker();
+        deadline=0;
+        renderTimer();
+        onEnd();
+      }else if(!onEnd){
+        stopTimerTicker();
+        deadline=0;
+        renderTimer();
+      }
+    }
+  };
+
+  tick();
+  if(deadline)timerId=setInterval(tick,80);
+}
+function startTimer(ms,onEnd){
+  const total=Math.max(1,Number(ms)||GF.ANSWER_MS);
+  setVisualTimer(now()+total,total,onEnd);
+}
+function followRemoteTimer(end,total=GF.ANSWER_MS){
+  setVisualTimer(end,total,null);
+}
+function renderTimer(){
+  const top=$('gf-timer');
+  const panel=$('gf-timer-panel');
+  const label=$('gf-timer-label');
+  const fill=$('gf-timer-fill');
+
+  if(!deadline){
+    if(top)top.textContent='';
+    if(panel){panel.hidden=true;panel.classList.remove('urgent')}
+    if(label)label.textContent='';
+    if(fill)fill.style.transform='scaleX(0)';
+    lastTimerText='';
+    return;
+  }
+
+  const remaining=Math.max(0,deadline-now());
+  const seconds=Math.ceil(remaining/1000);
+  const precise=(remaining/1000).toFixed(1);
+  const ratio=Math.max(0,Math.min(1,remaining/Math.max(1,timerTotalMs)));
+
+  const text=String(seconds);
+  if(top&&text!==lastTimerText){
+    top.textContent=text;
+    lastTimerText=text;
+  }
+
+  if(panel){
+    panel.hidden=false;
+    panel.classList.toggle('urgent',remaining<=3000);
+  }
+  if(label)label.textContent=`残り ${precise} 秒`;
+  if(fill)fill.style.transform=`scaleX(${ratio})`;
+}
 function hideQuestion(){
-  questionView=null;deadline=0;
+  questionView=null;
+  clearTimer();
   const q=$('gf-question');if(q){q.hidden=true;q.classList.remove('spectator')}
   const choices=$('gf-choices');if(choices){choices.replaceChildren();choices.dataset.locked='0'}
   if($('gf-q-word'))$('gf-q-word').textContent='';
@@ -90,6 +192,7 @@ function hideQuestion(){
 }
 function hideDefense(){
   pendingDefense=null;
+  clearTimer();
   const d=$('gf-defense');if(d)d.hidden=true;
   selectedDefenseSlots=[];
   document.querySelectorAll('.gf2-card.defense-selected').forEach(x=>x.classList.remove('defense-selected'));
@@ -101,17 +204,86 @@ function clearTransient(){
   if(role==='host')activeQuestion=null;
   broadcast('CLEAR',{});
 }
-function presentation({actor,target=null,targets=null,cards=[],result='',correct=null}){
-  const data={actor,target,targets,cards,result,correct};
+function actionTone(data={}){
+  const cards=(data.cards||[]).map(id=>CARD[id]).filter(Boolean);
+  const effect=data.actionType||data.effect||cards.find(c=>['exchange','buy','sell'].includes(c.effect))?.effect||'';
+  if(effect==='drain'||cards.some(c=>c.effect==='drain'||c.attackEffect==='drain'))return 'drain';
+  if(effect==='exchange')return 'exchange';
+  if(effect==='buy')return 'buy';
+  if(effect==='sell')return 'sell';
+  return cleanTone(data.element||'none');
+}
+function actionRoute(data={}){
+  const a=data.actor?nameOf(data.actor):'—';
+  const t=data.target?nameOf(data.target):(data.targets?'全員':'—');
+  return `${a} → ${t}`;
+}
+function presentation({
+  actor,target=null,targets=null,cards=[],result='',correct=null,
+  element=null,atk=null,damage=null,stars=null,actionType='',detail='',reset=false
+}){
+  const data={actor,target,targets,cards,result,correct,element,atk,damage,stars,actionType,detail,reset};
   broadcast('PRESENT',data);showPresentation(data);
 }
 function showPresentation(d){
-  if($('gf-turn-name'))$('gf-turn-name').textContent=d.actor?nameOf(d.actor):'WAIT';
-  if($('gf-target-display'))$('gf-target-display').textContent=d.target?nameOf(d.target):(d.targets?'全員':'SELECT');
-  if($('gf-focus-cards'))$('gf-focus-cards').textContent=(d.cards||[]).map(id=>CARD[id]?.name||id).join(' + ');
-  if($('gf-focus-result'))$('gf-focus-result').textContent=d.result||'';
-}
+  const focus=$('gf-focus');
 
+  if(d.reset){
+    currentPresentation=null;
+    if(focus)focus.dataset.tone='none';
+  }else{
+    currentPresentation={...d};
+    if(focus)focus.dataset.tone=actionTone(d);
+  }
+
+  // Keep actor/target visible through STATE/PRIVATE re-renders.
+  renderHeader();
+
+  const names=(d.cards||[]).map(id=>CARD[id]?.name||id).join(' + ');
+  if($('gf-focus-cards'))$('gf-focus-cards').textContent=names||'神器を選択';
+  if($('gf-focus-result'))$('gf-focus-result').textContent=d.result||'';
+
+  const tone=actionTone(d);
+  const badge=$('gf-focus-element');
+  if(badge){
+    badge.dataset.tone=tone;
+    badge.textContent=tone==='drain'?'吸収':
+      tone==='exchange'?'両替':tone==='buy'?'買う':tone==='sell'?'売る':
+      elementLabel(d.element||'none')+'属性';
+  }
+
+  const damageBox=$('gf-focus-damage');
+  if(damageBox){
+    if(d.reset){
+      damageBox.textContent='攻撃待機';
+    }else if(Number.isFinite(d.damage)){
+      if(String(d.result||'').includes('はね返す'))damageBox.textContent=`反射 ${d.damage} DAMAGE`;
+      else if(String(d.result||'').includes('弾く'))damageBox.textContent=`弾く ${d.damage} DAMAGE`;
+      else damageBox.textContent=`${d.damage} DAMAGE`;
+    }else if(Number.isFinite(d.atk)){
+      damageBox.textContent=`攻撃力 ${d.atk}（防御前）`;
+    }else{
+      damageBox.textContent='';
+    }
+  }
+
+  const starBox=$('gf-focus-stars');
+  if(starBox){
+    if(d.reset||!Number.isFinite(d.stars))starBox.textContent='';
+    else starBox.textContent=`問題★${Math.max(0,Math.min(5,d.stars))}`;
+  }
+
+  const bits=[actionRoute(d)];
+  if(names)bits.push(`攻撃：${names}`);
+  if(d.element!==null&&d.element!==undefined)bits.push(`${elementLabel(d.element)}属性`);
+  if(Number.isFinite(d.atk))bits.push(`攻撃力${d.atk}`);
+  if(Number.isFinite(d.stars))bits.push(`問題★${Math.max(0,Math.min(5,d.stars))}`);
+  if(Number.isFinite(d.damage))bits.push(`実ダメージ${d.damage}`);
+  if(d.detail)bits.push(d.detail);
+
+  const line=$('gf-focus-detail');
+  if(line)line.textContent=d.reset?'行動待機中':bits.join(' · ');
+}
 function recordReview(word,meaning){
   if(!word||!meaning)return;
   const list=safeStorageGet(REVIEW_KEY,[]);
@@ -124,11 +296,13 @@ function elementLabel(e){return ({none:'無',fire:'火',water:'水',wood:'木',e
 function cardDesc(c){
   if(!c)return '';
   const fx=c.effectText?` · ${c.effectText}`:'';
-  if(c.kind==='weapon')return `攻${c.atk}${c.def?` / 守${c.def}`:''} · ${elementLabel(c.element)} · ¥${c.price}${fx}`;
-  if(c.kind==='add')return `+攻${c.atk}${c.def?` / 守${c.def}`:''} · ${elementLabel(c.element)} · ¥${c.price}${fx}`;
-  if(c.kind==='global')return `全体${Math.round(c.hit*100)}%攻${c.atk}${c.def?` / 守${c.def}`:''} · ${elementLabel(c.element)} · ¥${c.price}${fx}`;
+  const q=cardQuestionLabel(c);
+  const qpart=q?` · ${q}`:'';
+  if(c.kind==='weapon')return `攻${c.atk}${c.def?` / 守${c.def}`:''}${qpart} · ${elementLabel(c.element)} · ¥${c.price}${fx}`;
+  if(c.kind==='add')return `+攻${c.atk}${c.def?` / 守${c.def}`:''}${qpart} · ${elementLabel(c.element)} · ¥${c.price}${fx}`;
+  if(c.kind==='global')return `全体${Math.round(c.hit*100)}%攻${c.atk}${c.def?` / 守${c.def}`:''}${qpart} · ${elementLabel(c.element)} · ¥${c.price}${fx}`;
   if(c.kind==='defense')return `守${c.def} · ${elementLabel(c.element)} · ¥${c.price}${fx}`;
-  if(c.kind==='miracle')return `MP${c.cost} · ${c.effectText||c.effect}`;
+  if(c.kind==='miracle')return `MP${c.cost}${qpart} · ${c.effectText||c.effect}`;
   if(c.kind==='special')return c.effectText||'';
   return `${c.effectText||c.effect||''} · ¥${c.price}`;
 }
@@ -239,7 +413,7 @@ function nextTurn(){
   if(livingAfter.length<=1)return finishGame();
   const next=advanceTurn(state);
   if(state.phase===PHASE.FINISHED)return finishGame();
-  presentation({actor:next,result:'TURN'});
+  presentation({actor:next,result:'TURN',reset:true});
   sync();
 }
 
@@ -265,12 +439,12 @@ function askSingle(actorPid,target,attack,stars,forced=null){
   activeQuestion={kind:'single',qid:`q-${seed()}`,actor:actorPid,target,attack,q};
   state.phase=PHASE.QUESTION;
   const qid=activeQuestion.qid;
-  const payload={kind:'single',qid,actor:actorPid,target,word:q.word,choices:q.choices,stars:q.stars,deadline:now()+GF.ANSWER_MS,cards:attack.cards};
+  const payload={kind:'single',qid,actor:actorPid,target,word:q.word,choices:q.choices,stars:q.stars,deadline:now()+GF.ANSWER_MS,duration:GF.ANSWER_MS,cards:attack.cards};
   broadcast('QUESTION',payload);receiveQuestion(payload);sync();
   startTimer(GF.ANSWER_MS,()=>hostAnswer(actorPid,qid,-1));
 }
 function askGlobal(actorPid,targets,attack){
-  const stars=globalQuestionStars(attack.hit);
+  const stars=attack.questionStars??globalQuestionStars(attack.hit);
   const q=makeGFQuestion(stars,seed());
   const forced=targets.filter(pid=>hostPlayer(pid)?.ailments?.includes('dark-cloud'));
   const answering=targets.filter(pid=>!forced.includes(pid));
@@ -279,7 +453,7 @@ function askGlobal(actorPid,targets,attack){
   state.phase=PHASE.GROUP;
   if(!answering.length){sync();return setTimeout(resolveGlobalAnswers,250)}
   const qid=activeQuestion.qid;
-  const payload={kind:'global',qid,actor:actorPid,targets:[...answering],word:q.word,choices:q.choices,stars:q.stars,deadline:now()+GF.ANSWER_MS,cards:attack.cards};
+  const payload={kind:'global',qid,actor:actorPid,targets:[...answering],word:q.word,choices:q.choices,stars:q.stars,deadline:now()+GF.ANSWER_MS,duration:GF.ANSWER_MS,cards:attack.cards};
   broadcast('QUESTION',payload);receiveQuestion(payload);sync();
   startTimer(GF.ANSWER_MS,()=>resolveGlobalTimeouts());
 }
@@ -301,11 +475,11 @@ function hostAnswer(pid,qid,choice){
     hideQuestion();broadcast('QUESTION_END',{});
 
     if(!correct){
-      presentation({actor:meta.actor,target:meta.target,cards:meta.attack.cards,result:'攻撃失敗',correct:false});
+      presentation({actor:meta.actor,target:meta.target,cards:meta.attack.cards,result:'攻撃失敗',correct:false,element:meta.attack.element,atk:meta.attack.atk,damage:0,stars:meta.attack.questionStars,actionType:meta.attack.effect==='drain'?'drain':'attack'});
       return setTimeout(nextTurn,800);
     }
 
-    presentation({actor:meta.actor,target:meta.target,cards:meta.attack.cards,result:'攻撃成功',correct:true});
+    presentation({actor:meta.actor,target:meta.target,cards:meta.attack.cards,result:'攻撃成功',correct:true,element:meta.attack.element,atk:meta.attack.atk,stars:meta.attack.questionStars,actionType:meta.attack.effect==='drain'?'drain':'attack'});
     const hits=Math.max(1,meta.attack.hits||1);
 
     if(meta.target===meta.actor){
@@ -385,10 +559,10 @@ function processGlobalQueue(){
     showAnswerResult({pid:item.pid,choice:item.answer.choice,correct:item.answer.correct,word:item.word,meaning:item.meaning});
   }
   if(item.answer.correct){
-    presentation({actor:item.actor,target:item.pid,cards:item.attack.cards,result:'回避 · 0ダメージ',correct:true});
+    presentation({actor:item.actor,target:item.pid,cards:item.attack.cards,result:'回避 · 0ダメージ',correct:true,element:item.attack.element,atk:item.attack.atk,damage:0,stars:item.attack.questionStars,actionType:item.attack.effect==='drain'?'drain':'attack'});
     return setTimeout(processGlobalQueue,850);
   }
-  presentation({actor:item.actor,target:item.pid,cards:item.attack.cards,result:'命中 · 防御へ',correct:false});
+  presentation({actor:item.actor,target:item.pid,cards:item.attack.cards,result:'命中 · 防御へ',correct:false,element:item.attack.element,atk:item.attack.atk,stars:item.attack.questionStars,actionType:item.attack.effect==='drain'?'drain':'attack'});
   setTimeout(()=>beginDefense(item.pid,item.attack,'global'),450);
 }
 
@@ -398,7 +572,7 @@ function processSingleStrikes(){
   const t=hostPlayer(item.target);
   if(!t?.alive)return processSingleStrikes();
   const n=(item.attack.hits||1)-singleStrikeQueue.length;
-  presentation({actor:item.attack.actor,target:item.target,cards:item.attack.cards,result:(item.attack.hits||1)>1?`第${n}撃 · 防御へ`:'防御へ'});
+  presentation({actor:item.attack.actor,target:item.target,cards:item.attack.cards,result:(item.attack.hits||1)>1?`第${n}撃 · 防御へ`:'防御へ',element:item.attack.element,atk:item.attack.atk,stars:item.attack.questionStars,actionType:item.attack.effect==='drain'?'drain':'attack'});
   setTimeout(()=>beginDefense(item.target,item.attack,'single-repeat'),300);
 }
 
@@ -407,7 +581,7 @@ function beginDefense(target,attack,origin){
   if(!p?.alive)return origin==='global'?processGlobalQueue():nextTurn();
   pendingDefense={target,attack,origin};
   state.phase=PHASE.DEFENSE;
-  const payload={target,attack,origin,deadline:now()+GF.ANSWER_MS};
+  const payload={target,attack,origin,deadline:now()+GF.ANSWER_MS,duration:GF.ANSWER_MS};
   broadcast('DEFENSE_PROMPT',payload);
   if(target===localPid){receiveDefense(payload)}
   sync();
@@ -416,49 +590,106 @@ function beginDefense(target,attack,origin){
 
 function hostDefend(pid,shieldIds){
   if(role!=='host'||!pendingDefense||pendingDefense.target!==pid)return;
-  const p=hostPlayer(pid);if(!p)return;
+  const defender=hostPlayer(pid);if(!defender)return;
+
   let ids=Array.isArray(shieldIds)?shieldIds.slice(0,GF.MAX_HAND):[];
-  if(p.ailments.includes('flash')&&ids.length>1)ids=ids.slice(0,1);
-  if(!hasIds(p.hand,ids))return;
+  if(defender.ailments.includes('flash')&&ids.length>1)ids=ids.slice(0,1);
+  if(!hasIds(defender.hand,ids))return;
+
   const cards=ids.map(id=>CARD[id]).filter(Boolean);
   if(!cards.every(c=>defenseCompatible(c,pendingDefense.attack,ids)))return;
-  clearTimer();
-  for(const id of ids){const i=p.hand.indexOf(id);if(i>=0)p.hand.splice(i,1)}
-  drawToHand(p,ids.length,rnd);
 
-  const meta=pendingDefense;pendingDefense=null;
-  broadcast('DEFENSE_END',{});hideDefense();
+  clearTimer();
+  for(const id of ids){
+    const i=defender.hand.indexOf(id);
+    if(i>=0)defender.hand.splice(i,1);
+  }
+  drawToHand(defender,ids.length,rnd);
+
+  const meta=pendingDefense;
+  pendingDefense=null;
+  broadcast('DEFENSE_END',{});
+  hideDefense();
+
   const outcome=calcDefense(meta.attack,cards);
   const labels=cards.map(c=>c.name).join(' + ')||'許す';
+  const tone=meta.attack.effect==='drain'?'drain':meta.attack.element;
+
+  let resolutionDelay=1050;
 
   if(outcome.kind==='reflect'){
-    const src=hostPlayer(meta.attack.actor);
-    if(src){
-      const dmg=hurt(src,meta.attack.atk,{dark:outcome.attack.element==='dark'});
-      applyStatusFromAttack(src,outcome.attack);
-      if(meta.attack.effect==='drain'&&dmg>0)healPlayer(p,dmg);
+    // 原作「はね返す」:
+    // 元の攻撃者へ、その攻撃を直接返す。返された攻撃は再防御不可。
+    const reflectedTarget=hostPlayer(meta.attack.actor);
+    let dealt=0;
+    if(reflectedTarget?.alive){
+      dealt=hurt(reflectedTarget,outcome.attack.atk,{dark:outcome.attack.element==='dark'});
+      applyStatusFromAttack(reflectedTarget,outcome.attack);
+      // 吸収攻撃を反射した場合は、反射した側を新しい攻撃元として扱う。
+      if(meta.attack.effect==='drain'&&dealt>0)healPlayer(defender,dealt);
     }
-    presentation({actor:meta.attack.actor,target:pid,cards:meta.attack.cards,result:`${labels} · はね返す`});
+
+    presentation({
+      actor:pid,target:meta.attack.actor,cards:meta.attack.cards,
+      result:`${labels} · はね返す`,
+      element:outcome.attack.element,
+      atk:outcome.attack.atk,
+      damage:dealt,
+      stars:meta.attack.questionStars,
+      actionType:tone,
+      detail:`${defender.profile.name} が反射 → ${reflectedTarget?.profile?.name||'PLAYER'}へ${dealt}ダメージ / 再防御不可`
+    });
+    history(`${defender.profile.name} が ${labels} ではね返す → ${reflectedTarget?.profile?.name||'PLAYER'} に ${dealt}ダメージ`,tone);
+    resolutionDelay=1650;
   }else if(outcome.kind==='bounce'){
+    // 原作「弾く」:
+    // 自分を含む生存者の誰か1人へ返す。返された攻撃は再防御不可。
     const candidates=alive(state);
-    const dst=candidates[Math.floor(rnd()*candidates.length)];
-    if(dst){
-      const dmg=hurt(dst,meta.attack.atk,{dark:outcome.attack.element==='dark'});
-      applyStatusFromAttack(dst,outcome.attack);
-      if(meta.attack.effect==='drain'&&dmg>0)healPlayer(p,dmg);
+    const bouncedTarget=candidates[Math.floor(rnd()*candidates.length)]||defender;
+    let dealt=0;
+    if(bouncedTarget?.alive){
+      dealt=hurt(bouncedTarget,outcome.attack.atk,{dark:outcome.attack.element==='dark'});
+      applyStatusFromAttack(bouncedTarget,outcome.attack);
+      if(meta.attack.effect==='drain'&&dealt>0)healPlayer(defender,dealt);
     }
-    presentation({actor:meta.attack.actor,target:pid,cards:meta.attack.cards,result:`${labels} · 弾く → ${dst?.profile?.name||'PLAYER'}`});
+
+    presentation({
+      actor:pid,target:bouncedTarget?.pid||pid,cards:meta.attack.cards,
+      result:`${labels} · 弾く`,
+      element:outcome.attack.element,
+      atk:outcome.attack.atk,
+      damage:dealt,
+      stars:meta.attack.questionStars,
+      actionType:tone,
+      detail:`${defender.profile.name} が弾く → ${bouncedTarget?.profile?.name||'PLAYER'}へ${dealt}ダメージ / 再防御不可`
+    });
+    history(`${defender.profile.name} が ${labels} で弾く → ${bouncedTarget?.profile?.name||'PLAYER'} に ${dealt}ダメージ`,tone);
+    resolutionDelay=1650;
   }else if(outcome.kind==='stop'){
-    presentation({actor:meta.attack.actor,target:pid,cards:meta.attack.cards,result:`${labels} · 奇跡を止めた`});
+    presentation({
+      actor:meta.attack.actor,target:pid,cards:meta.attack.cards,
+      result:`${labels} · 止める`,element:outcome.attack.element,
+      atk:meta.attack.atk,damage:0,stars:meta.attack.questionStars,actionType:tone,
+      detail:'完全防御'
+    });
+    history(`${defender.profile.name} が ${labels} で攻撃を完全に止めた`,tone);
   }else{
-    const dmg=hurt(p,outcome.damage,{dark:outcome.attack.element==='dark'});
-    applyStatusFromAttack(p,outcome.attack);
-    if(meta.attack.effect==='drain'&&dmg>0)healPlayer(hostPlayer(meta.attack.actor),dmg);
-    presentation({actor:meta.attack.actor,target:pid,cards:meta.attack.cards,result:`攻${meta.attack.atk} - 守${outcome.def} = ${dmg}ダメージ`});
+    const dealt=hurt(defender,outcome.damage,{dark:outcome.attack.element==='dark'});
+    applyStatusFromAttack(defender,outcome.attack);
+    if(meta.attack.effect==='drain'&&dealt>0)healPlayer(hostPlayer(meta.attack.actor),dealt);
+
+    presentation({
+      actor:meta.attack.actor,target:pid,cards:meta.attack.cards,
+      result:`攻${meta.attack.atk} - 守${outcome.def} = ${dealt}`,
+      element:outcome.attack.element,atk:meta.attack.atk,damage:dealt,stars:meta.attack.questionStars,
+      actionType:tone
+    });
+    history(`${nameOf(meta.attack.actor)} → ${defender.profile.name}：${labels}、攻${meta.attack.atk} - 守${outcome.def} = ${dealt}ダメージ`,tone);
   }
+
   sync();
   const cb=meta.origin==='global'?processGlobalQueue:meta.origin==='single-repeat'?processSingleStrikes:nextTurn;
-  setTimeout(()=>checkEndOrContinue(cb),950);
+  setTimeout(()=>checkEndOrContinue(cb),resolutionDelay);
 }
 function hostUse(pid,uses,target){
   if(role!=='host'||!state||state.phase!==PHASE.TURN||state.turn!==pid)return;
@@ -487,8 +718,9 @@ function hostUse(pid,uses,target){
     const c=globalCards[0];
     consumeFromHand(p,[c.id],rnd);
     const targets=alive(state).filter(x=>x.pid!==pid).map(x=>x.pid);
-    const attack={source:'global',actor:pid,atk:c.atk,hit:c.hit,element:c.element,effect:c.effect,cards:[c.id]};
-    presentation({actor:pid,targets:true,cards:[c.id],result:'全体攻撃'});
+    const attack={source:'global',actor:pid,atk:c.atk,hit:c.hit,element:c.element,effect:c.effect,cards:[c.id],questionStars:globalQuestionStars(c.hit)};
+    presentation({actor:pid,targets:true,cards:[c.id],result:'全体攻撃',element:attack.element,atk:attack.atk,stars:attack.questionStars,actionType:attack.effect==='drain'?'drain':'attack'});
+    history(`${p.profile.name} → 全員：${c.name} / ${elementLabel(attack.element)}属性 / 攻撃力${attack.atk} / 問題★${attack.questionStars}`,attack.effect==='drain'?'drain':attack.element);
     sync();return setTimeout(()=>askGlobal(pid,targets,attack),600);
   }
 
@@ -508,7 +740,9 @@ function hostUse(pid,uses,target){
   if(!consumed.ok)return log(consumed.reason);
   const attack={...built.attack,actor:pid};
   const stars=attackQuestionStars({base:attack.baseStars,slump:p.slump,bonusCards:attack.bonusCards});
-  presentation({actor:pid,target,cards:cards.map(c=>c.id),result:'攻撃準備'});
+  attack.questionStars=stars;
+  presentation({actor:pid,target,cards:cards.map(c=>c.id),result:'攻撃準備',element:attack.element,atk:attack.atk,stars,actionType:attack.effect==='drain'?'drain':'attack'});
+  history(`${p.profile.name} → ${t.profile.name}：${cards.map(c=>c.name).join(' + ')} / ${elementLabel(attack.element)}属性 / 攻撃力${attack.atk} / 問題★${stars}`,attack.effect==='drain'?'drain':attack.element);
   sync();setTimeout(()=>askSingle(pid,target,attack,stars),600);
 }
 function useMiracle(p,use,target){
@@ -520,9 +754,10 @@ function useMiracle(p,use,target){
   if(!useMiracleFromSource(p,use))return log('奇跡を使用できません');
 
   if(c.miracleMode==='attack'){
-    const attack={source:'miracle',actor:p.pid,atk:c.atk,hit:c.hit,element:c.element,effect:c.attackEffect||null,cards:[c.id]};
     const stars=probabilityQuestionStars(c.hit);
-    presentation({actor:p.pid,target:t.pid,cards:[c.id],result:'奇跡攻撃'});
+    const attack={source:'miracle',actor:p.pid,atk:c.atk,hit:c.hit,element:c.element,effect:c.attackEffect||null,cards:[c.id],questionStars:stars};
+    presentation({actor:p.pid,target:t.pid,cards:[c.id],result:'奇跡攻撃',element:attack.element,atk:attack.atk,stars,actionType:attack.effect==='drain'?'drain':'attack'});
+    history(`${p.profile.name} → ${t.profile.name}：${c.name} / ${elementLabel(attack.element)}属性 / 攻撃力${attack.atk} / 問題★${stars}`,attack.effect==='drain'?'drain':attack.element);
     sync();return setTimeout(()=>askSingle(p.pid,t.pid,attack,stars),600);
   }
 
@@ -535,7 +770,8 @@ function useMiracle(p,use,target){
   else if(c.effect==='heal10')healPlayer(p,10);
   else if(c.effect==='money10')p.money+=10;
 
-  presentation({actor:p.pid,target:t?.pid||p.pid,cards:[c.id],result:`${c.name} · ${c.effectText}`});
+  presentation({actor:p.pid,target:t?.pid||p.pid,cards:[c.id],result:`${c.name} · ${c.effectText}`,element:c.element,actionType:c.attackEffect==='drain'?'drain':'none'});
+  history(`${p.profile.name}${t&&t.pid!==p.pid?` → ${t.profile.name}`:''}：${c.name} · ${c.effectText}`,c.attackEffect==='drain'?'drain':'none');
   sync();setTimeout(nextTurn,700);
 }
 function useUtility(p,c,target){
@@ -563,7 +799,8 @@ function useUtility(p,c,target){
   if(c.effect==='forget2'){
     for(let k=0;k<2&&t.learned.length;k++)t.learned.splice(Math.floor(rnd()*t.learned.length),1);
   }
-  presentation({actor:p.pid,target:t?.pid||p.pid,cards:[c.id],result:`${c.name} · ${c.effectText}`});
+  presentation({actor:p.pid,target:t?.pid||p.pid,cards:[c.id],result:`${c.name} · ${c.effectText}`,actionType:c.effect});
+  history(`${p.profile.name}${t&&t.pid!==p.pid?` → ${t.profile.name}`:''}：${c.name} · ${c.effectText}`,c.effect);
   sync();setTimeout(nextTurn,650);
 }
 function useReview(p,c,target){
@@ -574,7 +811,7 @@ function useReview(p,c,target){
   const q=makeGFQuestion(t.lastQuestion.stars||1,seed(),[t.lastQuestion.word,t.lastQuestion.meaning]);
   activeQuestion={kind:'review',qid:`r-${seed()}`,actor:p.pid,target:t.pid,cards:[c.id],q};
   state.phase=PHASE.QUESTION;
-  const payload={kind:'review',qid:activeQuestion.qid,actor:p.pid,target:t.pid,word:q.word,choices:q.choices,stars:q.stars,deadline:now()+GF.ANSWER_MS,cards:[c.id]};
+  const payload={kind:'review',qid:activeQuestion.qid,actor:p.pid,target:t.pid,word:q.word,choices:q.choices,stars:q.stars,deadline:now()+GF.ANSWER_MS,duration:GF.ANSWER_MS,cards:[c.id]};
   broadcast('QUESTION',payload);receiveQuestion(payload);sync();
   startTimer(GF.ANSWER_MS,()=>hostAnswer(t.pid,activeQuestion?.qid,-1));
 }
@@ -623,7 +860,10 @@ function beginExchange(p,c){
 function hostTradeChoice(pid,d){
   const tr=pendingTrade;if(!tr||tr.actor!==pid||tr.id!==d.id)return;
   const p=hostPlayer(pid),t=hostPlayer(tr.target);
-  if(!d.confirm){pendingTrade=null;closeTrade();return nextTurn()}
+  if(!d.confirm){
+    history(`${p?.profile?.name||'PLAYER'}：${tr.kind==='buy'?'買う':tr.kind==='sell'?'売る':'両替'}をキャンセル`,tr.kind);
+    pendingTrade=null;closeTrade();return nextTurn()
+  }
 
   if(tr.kind==='buy'){
     const item=CARD[tr.itemId];
@@ -633,6 +873,8 @@ function hostTradeChoice(pid,d){
     t.hand.splice(t.hand.indexOf(tr.itemId),1);
     if(p.hand.length>=GF.MAX_HAND)p.hand.splice(Math.floor(rnd()*p.hand.length),1);
     p.hand.push(tr.itemId);
+    presentation({actor:p.pid,target:t.pid,cards:[tr.action,tr.itemId],result:`${item.name}を¥${tr.price}で購入`,actionType:'buy'});
+    history(`${p.profile.name} が ${t.profile.name} から ${item.name} を ¥${tr.price} で購入`,'buy');
   }
   if(tr.kind==='sell'){
     const itemId=String(d.itemId||'');
@@ -644,12 +886,16 @@ function hostTradeChoice(pid,d){
     p.money+=price;
     if(t.hand.length>=GF.MAX_HAND)t.hand.splice(Math.floor(rnd()*t.hand.length),1);
     t.hand.push(itemId);
+    presentation({actor:p.pid,target:t.pid,cards:[tr.action,itemId],result:`${item.name}を¥${price}で売却`,actionType:'sell'});
+    history(`${p.profile.name} が ${t.profile.name} に ${item.name} を ¥${price} で売却`,'sell');
   }
   if(tr.kind==='exchange'){
     const v=validateExchange(tr.total,d.hp,d.mp,d.money);
     if(!v.ok)return send(pid===localPid?null:guests.get(pid),'TRADE_ERROR',{reason:v.reason});
     consumeFromHand(p,[tr.action],rnd);
     p.hp=v.hp;p.mp=v.mp;p.money=v.money;
+    presentation({actor:p.pid,target:p.pid,cards:[tr.action],result:'両替',actionType:'exchange',detail:`HP ${p.hp} / MP ${p.mp} / ¥${p.money}`});
+    history(`${p.profile.name}：両替 → HP ${p.hp} / MP ${p.mp} / ¥${p.money}`,'exchange');
   }
   pendingTrade=null;closeTrade();broadcast('TRADE_END',{});sync();setTimeout(nextTurn,600);
 }
@@ -696,7 +942,13 @@ function sendTrade(confirm){
 }
 
 function receiveQuestion(d){questionView=d;renderQuestion(d)}
-function receiveDefense(d){hideQuestion();pendingDefense=d;renderDefense();renderHand()}
+function receiveDefense(d){
+  hideQuestion();
+  pendingDefense=d;
+  renderDefense();
+  renderHand();
+  if(role!=='host')followRemoteTimer(d.deadline||now()+GF.ANSWER_MS,d.duration||GF.ANSWER_MS);
+}
 
 function showAnswerResult(d){
   log(`${nameOf(d.pid)}：${d.choice<0?'時間切れ':`${d.choice+1}番`} → ${d.correct?'正解':'不正解'}（正解 ${d.meaning}）`);
@@ -718,13 +970,38 @@ function receive(msg,conn=null){
   if(role==='host'){
     const pid=conn?.__pid;
     if(msg.type==='HELLO'){
-      const pr=profileSafe(d.profile);if(!pr||state?.players?.length>=GF.MAX_PLAYERS)return;
-      if(state?.players?.some(p=>p.pid===pr.id))return;
-      conn.__pid=pr.id;guests.set(pr.id,conn);rememberFriend(pr);
+      const pr=profileSafe(d.profile);if(!pr)return;
+      conn.__pid=pr.id;
+      const existing=state?.players?.find(p=>p.pid===pr.id);
+
+      if(existing){
+        // Mobile browsers can recreate the WebRTC connection during page transition.
+        // Replace the stale connection and immediately resync the existing player.
+        cancelDisconnectGrace(pr.id);guests.set(pr.id,conn);rememberFriend(pr);
+        if(battleStarted){
+          const payload=battleStartPayloads.get(pr.id);
+          if(payload)send(conn,'START',payload);
+          send(conn,'STATE',publicView());
+          send(conn,'PRIVATE',{hand:[...existing.hand],learned:[...existing.learned]});
+        }
+        maybeBeginBattle();
+        return;
+      }
+
+      if((state?.players?.length||lobbyProfiles.length)>=GF.MAX_PLAYERS)return;
+      cancelDisconnectGrace(pr.id);guests.set(pr.id,conn);rememberFriend(pr);
       if(state)state.players.push(makePlayer(pr));
       else lobbyProfiles.push(pr);
       broadcast('LOBBY',{players:lobbyProfiles});renderLobbyPlayers();
       maybeBeginBattle();
+      return;
+    }
+    if(msg.type==='BATTLE_READY'){
+      if(pid){battleReadyGuests.add(pid)}
+      if(expectedIds&&[...expectedIds].filter(id=>id!==localPid).every(id=>battleReadyGuests.has(id))){
+        clearInterval(battleResendTimer);battleResendTimer=null;
+        status('全員同期済み');
+      }
       return;
     }
     if(msg.type==='USE')return hostUse(pid,d.uses,d.target);
@@ -741,10 +1018,16 @@ function receive(msg,conn=null){
 
   if(msg.type==='LOBBY'){lobbyProfiles=d.players||[];renderLobbyPlayers();return}
   if(msg.type==='NAVIGATE'){saveTransition({role:'guest',code:d.code,players:d.players,created:now()});goBattle(d.code);return}
-  if(msg.type==='START'){localPid=d.you;publicState=d.state;hand=d.hand||[];learned=d.learned||[];render();return}
+  if(msg.type==='START'){
+    localPid=d.you;publicState=d.state;hand=d.hand||[];learned=d.learned||[];
+    send(hostConn,'BATTLE_READY',{pid:localPid});
+    status('対戦同期済み');
+    render();return
+  }
   if(msg.type==='STATE'){publicState=d;render();return}
   if(msg.type==='PRIVATE'){hand=d.hand||[];learned=d.learned||[];renderHand();return}
   if(msg.type==='PRESENT'){showPresentation(d);return}
+  if(msg.type==='HISTORY'){log(d.text,d.tone);return}
   if(msg.type==='QUESTION'){receiveQuestion(d);return}
   if(msg.type==='QUESTION_END'){hideQuestion();return}
   if(msg.type==='ANSWER_ACK'){
@@ -766,12 +1049,46 @@ function receive(msg,conn=null){
 function hostPray(pid){
   if(role!=='host'||state.phase!==PHASE.TURN||state.turn!==pid)return;
   const p=hostPlayer(pid),r=pray(p,rnd);if(!r.ok)return log(r.reason);
-  presentation({actor:pid,result:r.discarded?`祈る · ${CARD[r.discarded]?.name||'神器'}を捨てた`:'祈る'});
+  const prayResult=r.discarded?`祈る · ${CARD[r.discarded]?.name||'神器'}を捨てた`:'祈る';
+  presentation({actor:pid,target:pid,result:prayResult,actionType:'none'});
+  history(`${p.profile.name}：${prayResult}`,'none');
   sync();setTimeout(nextTurn,500);
+}
+
+function cancelDisconnectGrace(pid){
+  const timer=disconnectGraceTimers.get(pid);
+  if(timer)clearTimeout(timer);
+  disconnectGraceTimers.delete(pid);
+}
+function handleGuestConnectionClosed(pid,connection){
+  if(role!=='host'||!pid)return;
+  if(guests.get(pid)!==connection)return; // stale connection closed after a successful reconnect
+
+  // During the battle-page handoff, keep the player record and wait for Safari/iPad to reconnect.
+  if(state&&!battleStarted){
+    guests.delete(pid);
+    status(`${nameOf(pid)} の再接続待ち…`);
+    return;
+  }
+
+  if(!battleStarted){
+    disconnectPlayer(pid);
+    return;
+  }
+
+  guests.delete(pid);
+  cancelDisconnectGrace(pid);
+  status(`${nameOf(pid)} の一時切断 · 5秒再接続待ち`);
+  const timer=setTimeout(()=>{
+    disconnectGraceTimers.delete(pid);
+    if(!guests.has(pid))disconnectPlayer(pid);
+  },5000);
+  disconnectGraceTimers.set(pid,timer);
 }
 
 function disconnectPlayer(pid){
   if(role!=='host'||!pid)return;
+  cancelDisconnectGrace(pid);
   guests.delete(pid);
   if(state){
     const p=hostPlayer(pid);if(p){p.hp=0;p.alive=false}
@@ -783,29 +1100,100 @@ function disconnectPlayer(pid){
 
 let lobbyProfiles=[];
 let expectedIds=null;
+let battleStarted=false;
+let battleReadyGuests=new Set();
+let battleStartPayloads=new Map();
+let battleResendTimer=null;
+let battleGuestRetryTimer=null;
+let battleGuestAttempts=0;
+let lobbyGuestRetryTimer=null;
+let lobbyGuestAttempts=0;
 
 function resetConnections(){
-  clearTimer();try{hostConn?.close()}catch{};hostConn=null;
+  clearTimer();
+  clearInterval(battleResendTimer);battleResendTimer=null;
+  clearTimeout(battleGuestRetryTimer);battleGuestRetryTimer=null;
+  clearTimeout(lobbyGuestRetryTimer);lobbyGuestRetryTimer=null;
+  try{hostConn?.close()}catch{};hostConn=null;
   for(const c of guests.values())try{c.close()}catch{};guests.clear();
   try{peer?.destroy()}catch{};peer=null;
+  battleReadyGuests.clear();battleStartPayloads.clear();
+  for(const timer of disconnectGraceTimers.values())clearTimeout(timer);
+  disconnectGraceTimers.clear();
+  battleStarted=false;battleGuestAttempts=0;lobbyGuestAttempts=0;
+}
+
+function peerOptions(){
+  return {
+    debug:0,
+    config:{
+      iceServers:[
+        {urls:'stun:stun.l.google.com:19302'},
+        {urls:'stun:stun1.l.google.com:19302'}
+      ]
+    }
+  };
+}
+function createPeer(id){return new Peer(id,peerOptions())}
+
+function connectLobbyGuest(code){
+  if(role!=='guest'||!peer||peer.destroyed||hostConn?.open)return;
+  const attempt=++lobbyGuestAttempts;
+  status(`接続中… ${attempt}/10`);
+  const c=peer.connect(ROOM_PREFIX+code,{reliable:true,serialization:'json'});
+  let opened=false;
+  const timeout=setTimeout(()=>{
+    if(opened||hostConn?.open)return;
+    try{c.close()}catch{}
+    if(attempt<10){
+      lobbyGuestRetryTimer=setTimeout(()=>connectLobbyGuest(code),550+attempt*120);
+    }else status('接続できませんでした。コードと通信環境を確認してください');
+  },2600);
+
+  c.on('open',()=>{
+    opened=true;clearTimeout(timeout);
+    if(hostConn&&hostConn!==c){try{hostConn.close()}catch{}}
+    hostConn=c;
+    send(hostConn,'HELLO',{profile:getPublicProfile()});
+    status('参加しました');
+  });
+  c.on('data',m=>receive(m,c));
+  c.on('close',()=>{
+    clearTimeout(timeout);
+    if(!opened&&attempt<10&&!hostConn?.open){
+      lobbyGuestRetryTimer=setTimeout(()=>connectLobbyGuest(code),650);
+    }else if(opened&&role==='guest'){
+      status('接続が切れました');
+    }
+  });
+  c.on('error',()=>{
+    clearTimeout(timeout);
+    if(!opened&&attempt<10&&!hostConn?.open){
+      lobbyGuestRetryTimer=setTimeout(()=>connectLobbyGuest(code),650);
+    }
+  });
 }
 
 function createRoom(){
   resetConnections();role='host';localPid=getPublicProfile().id;roomCode=randomInviteCode();lobbyProfiles=[profileSafe(getPublicProfile())];
   status('部屋を作成中…');if($('gf-room-code'))$('gf-room-code').textContent=roomCode;
-  peer=new Peer(ROOM_PREFIX+roomCode);
+  peer=createPeer(ROOM_PREFIX+roomCode);
   peer.on('open',()=>{status('参加待ち');renderLobbyPlayers()});
-  peer.on('connection',c=>{c.on('data',m=>receive(m,c));c.on('close',()=>disconnectPlayer(c.__pid));c.on('error',()=>disconnectPlayer(c.__pid))});
+  peer.on('connection',c=>{c.on('data',m=>receive(m,c));c.on('close',()=>handleGuestConnectionClosed(c.__pid,c));c.on('error',()=>handleGuestConnectionClosed(c.__pid,c))});
   peer.on('error',()=>status('部屋を作成できませんでした'));
 }
 function joinRoom(){
   resetConnections();role='guest';localPid=getPublicProfile().id;roomCode=normalizeInviteCode($('gf-join-code')?.value||'');
   if(roomCode.length!==6)return status('6文字コードを入力してください');
-  peer=new Peer(randomPeerId());
-  peer.on('open',()=>{
-    hostConn=peer.connect(ROOM_PREFIX+roomCode,{reliable:true,serialization:'json'});
-    hostConn.on('open',()=>{send(hostConn,'HELLO',{profile:getPublicProfile()});status('参加しました')});
-    hostConn.on('data',m=>receive(m,hostConn));hostConn.on('close',()=>status('接続が切れました'));
+  peer=createPeer(randomPeerId());
+  peer.on('open',()=>connectLobbyGuest(roomCode));
+  peer.on('error',e=>{
+    if(e?.type==='peer-unavailable'&&lobbyGuestAttempts<10){
+      clearTimeout(lobbyGuestRetryTimer);
+      lobbyGuestRetryTimer=setTimeout(()=>connectLobbyGuest(roomCode),700);
+      return;
+    }
+    status('通信エラー。再試行してください');
   });
 }
 function startGame(){
@@ -827,35 +1215,108 @@ function maybeBeginBattle(){
   if([...expectedIds].every(id=>ids.has(id)))startBattleState();
 }
 function startBattleState(){
+  if(battleStarted)return;
   const profiles=(loadTransition()?.players||[]).map(profileSafe).filter(Boolean);
+  if(profiles.length<2)return status('参加者情報の同期待ち…');
+
+  battleStarted=true;
   state=makeState(profiles,rnd);
   publicState=publicView();
-  for(const p of state.players){
-    if(p.pid===localPid){hand=[...p.hand];learned=[...p.learned]}
-    else send(guests.get(p.pid),'START',{you:p.pid,state:publicState,hand:[...p.hand],learned:[...p.learned]});
-  }
-  presentation({actor:state.turn,result:'BATTLE START'});
-  sync();
-}
+  battleStartPayloads.clear();
+  battleReadyGuests.clear();
 
+  for(const p of state.players){
+    if(p.pid===localPid){
+      hand=[...p.hand];learned=[...p.learned];
+    }else{
+      const payload={you:p.pid,state:publicState,hand:[...p.hand],learned:[...p.learned]};
+      battleStartPayloads.set(p.pid,payload);
+      send(guests.get(p.pid),'START',payload);
+    }
+  }
+
+  presentation({actor:state.turn,result:'BATTLE START',reset:true});
+  sync();
+
+  clearInterval(battleResendTimer);
+  let rounds=0;
+  battleResendTimer=setInterval(()=>{
+    if(++rounds>15){clearInterval(battleResendTimer);battleResendTimer=null;return}
+    for(const [pid,payload] of battleStartPayloads){
+      if(!battleReadyGuests.has(pid))send(guests.get(pid),'START',payload);
+    }
+  },900);
+}
 function startBattleHost(tr){
-  role='host';localPid=getPublicProfile().id;roomCode=normalizeInviteCode(tr.code);expectedIds=new Set((tr.players||[]).map(p=>p.id));
+  role='host';localPid=getPublicProfile().id;roomCode=normalizeInviteCode(tr.code);
+  expectedIds=new Set((tr.players||[]).map(p=>p.id));
   state={version:2,phase:PHASE.LOBBY,turn:null,winner:null,draw:false,turnCount:0,players:[makePlayer(profileSafe(getPublicProfile()))]};
   publicState=publicView();status('参加者を再接続中…');
-  peer=new Peer(BATTLE_PREFIX+roomCode);
-  peer.on('open',()=>{status('対戦接続済み');maybeBeginBattle()});
-  peer.on('connection',c=>{c.on('data',m=>receive(m,c));c.on('close',()=>disconnectPlayer(c.__pid));c.on('error',()=>disconnectPlayer(c.__pid))});
+  peer=createPeer(BATTLE_PREFIX+roomCode);
+  peer.on('open',()=>{status('対戦接続済み · 参加者待ち');maybeBeginBattle()});
+  peer.on('connection',c=>{
+    c.on('data',m=>receive(m,c));
+    c.on('close',()=>handleGuestConnectionClosed(c.__pid,c));
+    c.on('error',()=>handleGuestConnectionClosed(c.__pid,c));
+  });
+  peer.on('error',()=>status('対戦ホスト通信エラー'));
 }
-function startBattleGuest(tr){
-  role='guest';localPid=getPublicProfile().id;roomCode=normalizeInviteCode(tr.code);publicState={phase:PHASE.LOBBY,turn:null,winner:null,draw:false,players:(tr.players||[]).map(p=>({pid:p.id,profile:p,hp:GF.INITIAL_HP,mp:GF.INITIAL_MP,money:GF.INITIAL_MONEY,alive:true,slump:false,ailments:[]}))};
-  peer=new Peer(randomPeerId());
-  peer.on('open',()=>{
-    hostConn=peer.connect(BATTLE_PREFIX+roomCode,{reliable:true,serialization:'json'});
-    hostConn.on('open',()=>{send(hostConn,'HELLO',{profile:getPublicProfile()});status('ホストへ再接続済み')});
-    hostConn.on('data',m=>receive(m,hostConn));hostConn.on('close',()=>receive(packet('HOST_LEFT',{}),hostConn));
+function connectBattleGuest(){
+  if(role!=='guest'||!peer||peer.destroyed||hostConn?.open)return;
+  const attempt=++battleGuestAttempts;
+  status(`ホストへ再接続中… ${attempt}/15`);
+
+  const c=peer.connect(BATTLE_PREFIX+roomCode,{reliable:true,serialization:'json'});
+  let opened=false;
+  const timeout=setTimeout(()=>{
+    if(opened||hostConn?.open)return;
+    try{c.close()}catch{}
+    if(attempt<15){
+      battleGuestRetryTimer=setTimeout(connectBattleGuest,500+attempt*100);
+    }else status('ホストへ再接続できません。ページを再読み込みしてください');
+  },2400);
+
+  c.on('open',()=>{
+    opened=true;clearTimeout(timeout);
+    if(hostConn&&hostConn!==c){try{hostConn.close()}catch{}}
+    hostConn=c;
+    send(hostConn,'HELLO',{profile:getPublicProfile()});
+    status('ホストへ再接続済み · 手札同期中…');
+  });
+  c.on('data',m=>receive(m,c));
+  c.on('close',()=>{
+    clearTimeout(timeout);
+    if(role==='guest'&&publicState?.phase!==PHASE.FINISHED){
+      hostConn=null;
+      if(battleGuestAttempts<15)battleGuestRetryTimer=setTimeout(connectBattleGuest,700);
+    }
+  });
+  c.on('error',()=>{
+    clearTimeout(timeout);
+    if(!opened&&battleGuestAttempts<15){
+      hostConn=null;
+      battleGuestRetryTimer=setTimeout(connectBattleGuest,700);
+    }
   });
 }
 
+function startBattleGuest(tr){
+  role='guest';localPid=getPublicProfile().id;roomCode=normalizeInviteCode(tr.code);
+  publicState={phase:PHASE.LOBBY,turn:null,winner:null,draw:false,players:(tr.players||[]).map(p=>({
+    pid:p.id,profile:p,hp:GF.INITIAL_HP,mp:GF.INITIAL_MP,money:GF.INITIAL_MONEY,alive:true,slump:false,ailments:[]
+  }))};
+  status('対戦ページ接続準備中…');
+  peer=createPeer(randomPeerId());
+  peer.on('open',connectBattleGuest);
+  peer.on('error',e=>{
+    if(e?.type==='peer-unavailable'&&battleGuestAttempts<15){
+      clearTimeout(battleGuestRetryTimer);
+      battleGuestRetryTimer=setTimeout(connectBattleGuest,700);
+      return;
+    }
+    status('通信エラー · 再接続中…');
+  });
+}
 function renderPlayers(){
   const box=$('gf-players');if(!box)return;box.replaceChildren();
   const me=(publicState?.players||[]).find(x=>x.pid===localPid);
@@ -877,11 +1338,23 @@ function renderPlayers(){
   }
 }
 function renderHeader(){
-  const ps=publicState?.players||[],turn=ps.find(p=>p.pid===publicState?.turn),target=ps.find(p=>p.pid===selectedTarget);
-  if($('gf-turn-name'))$('gf-turn-name').textContent=turn?.profile?.name||'WAIT';
-  if($('gf-attacker-stats'))$('gf-attacker-stats').textContent=turn?`HP ${turn.hp} / MP ${turn.mp} / ¥${turn.money}`:'HP -- / MP -- / ¥--';
-  if($('gf-target-display'))$('gf-target-display').textContent=target?.profile?.name||'SELECT';
-  if($('gf-target-stats'))$('gf-target-stats').textContent=target?`HP ${target.hp} / MP ${target.mp} / ¥${target.money}`:'HP -- / MP -- / ¥--';
+  const ps=publicState?.players||[];
+  const action=currentPresentation&&!currentPresentation.reset?currentPresentation:null;
+  const actorId=action?.actor||publicState?.turn;
+  const actor=ps.find(p=>p.pid===actorId);
+  const targetId=action?.target||selectedTarget;
+  const target=ps.find(p=>p.pid===targetId);
+
+  if($('gf-turn-name'))$('gf-turn-name').textContent=actor?.profile?.name||(action?.actor?nameOf(action.actor):'WAIT');
+  if($('gf-attacker-stats'))$('gf-attacker-stats').textContent=actor?`HP ${actor.hp} / MP ${actor.mp} / ¥${actor.money}`:'HP -- / MP -- / ¥--';
+
+  if($('gf-target-display')){
+    $('gf-target-display').textContent=action?.targets?'全員':(target?.profile?.name||(action?.target?nameOf(action.target):'SELECT'));
+  }
+  if($('gf-target-stats')){
+    $('gf-target-stats').textContent=action?.targets?'MULTI TARGET':
+      target?`HP ${target.hp} / MP ${target.mp} / ¥${target.money}`:'HP -- / MP -- / ¥--';
+  }
   if($('gf-lobby-note'))$('gf-lobby-note').textContent=`TURN ${publicState?.turnCount||0}`;
 }
 function handSortGroup(c){
@@ -909,8 +1382,50 @@ function sortedArtifactEntries(){
   });
 }
 
+function renderAttackPreview(){
+  const box=$('gf-attack-preview');if(!box)return;
+  const uses=selectedUses();
+  if(!uses.length){
+    box.hidden=true;box.textContent='';return;
+  }
+  const cards=uses.map(u=>CARD[u.id]).filter(Boolean);
+  if(cards.length!==uses.length){
+    box.hidden=true;return;
+  }
+  const me=(publicState?.players||[]).find(p=>p.pid===localPid);
+  let text='';
+
+  if(cards.length===1&&cards[0].kind==='global'){
+    const c=cards[0];
+    text=`全体攻撃：攻${c.atk}（防御前） / 問題★${globalQuestionStars(c.hit)} / ${elementLabel(c.element)}属性`;
+  }else if(cards.length===1&&cards[0].kind==='miracle'&&cards[0].miracleMode==='attack'){
+    const c=cards[0],stars=probabilityQuestionStars(c.hit);
+    text=`奇跡攻撃：攻${c.atk}（防御前） / 問題★${stars} / ${elementLabel(c.element)}属性`;
+  }else{
+    const built=buildSingleAttack(cards);
+    if(built.ok){
+      const base=built.attack.baseStars||1;
+      const bonus=cards.filter(c=>isAttackModifier(c)).reduce((n,c)=>n+(c.stars||0),0);
+      const slump=me?.slump?1:0;
+      const finalStars=attackQuestionStars({base,slump:Boolean(slump),bonusCards:built.attack.bonusCards});
+      const breakdown=[`基本★${base}`];
+      if(bonus)breakdown.push(`追加+★${bonus}`);
+      if(slump)breakdown.push('スランプ+★1');
+      text=`攻撃力 ${built.attack.atk}（防御前ダメージ） / 問題★${finalStars}（${breakdown.join(' / ')}） / ${elementLabel(built.attack.element)}属性`;
+    }
+  }
+
+  if(!text){box.hidden=true;box.textContent='';return}
+  box.hidden=false;box.textContent=text;
+}
 function renderHand(){
   const box=$('gf-hand');if(!box)return;box.replaceChildren();
+  if(!hand.length&&publicState?.phase===PHASE.LOBBY){
+    const wait=document.createElement('div');
+    wait.className='gf2-hand-wait';
+    wait.textContent=role==='guest'?'手札をホストから同期中…':'参加者の再接続を待っています…';
+    box.append(wait);
+  }
   const myTurn=publicState?.phase===PHASE.TURN&&publicState.turn===localPid;
   const defending=pendingDefense?.target===localPid;
   const selectedDefense=selectedShieldIds();
@@ -919,16 +1434,16 @@ function renderHand(){
     if(!myTurn)return;
     if(c.auto){log(`${c.name} は自動発動神器です`);return}
     const modifier=isAttackModifier(c);
-    if(modifier){b.classList.toggle('selected');return}
+    if(modifier){b.classList.toggle('selected');renderAttackPreview();return}
     if(c.kind==='weapon'){
       document.querySelectorAll('#gf-hand .gf2-card.selected').forEach(x=>{
         const cc=CARD[x.dataset.id];
         if(cc?.kind==='weapon'||!isAttackModifier(cc))x.classList.remove('selected');
       });
-      b.classList.toggle('selected');return;
+      b.classList.toggle('selected');renderAttackPreview();return;
     }
     document.querySelectorAll('#gf-hand .gf2-card.selected').forEach(x=>x.classList.remove('selected'));
-    b.classList.toggle('selected');
+    b.classList.toggle('selected');renderAttackPreview();
   };
 
   for(const entry of sortedArtifactEntries()){
@@ -976,6 +1491,7 @@ function renderHand(){
 
   if($('gf-use'))$('gf-use').disabled=!myTurn||defending;
   if($('gf-pray'))$('gf-pray').disabled=!myTurn||defending;
+  if(!defending)renderAttackPreview();
 }
 function canLocalAnswerQuestion(d){
   if(!d)return false;
@@ -1052,7 +1568,9 @@ function renderQuestion(d){
     spectator.textContent=`${who} が回答中。選択肢は回答者にだけ表示されます。`;
   }
   deadline=d.deadline||now()+GF.ANSWER_MS;
-  renderTimer();
+  timerTotalMs=d.duration||GF.ANSWER_MS;
+  if(role!=='host')followRemoteTimer(deadline,timerTotalMs);
+  else renderTimer();
 }
 function renderDefense(){
   if(!pendingDefense)return hideDefense();
@@ -1064,13 +1582,38 @@ function renderDefense(){
   $('gf-defense-count').textContent=`${ids.length}枚 / 守${total}`;
   const localState=(publicState?.players||[]).find(x=>x.pid===localPid);
   if(localState?.ailments?.includes('flash'))$('gf-defense-count').textContent+=' · 閃光中は1枚まで';
-  $('gf-defense-text').textContent=`攻撃 ${pendingDefense.attack.atk}。選択した防具の守備値合計ぶんだけダメージを軽減します。`;
+  {
+    const a=pendingDefense.attack;
+    const names=(a.cards||[]).map(id=>CARD[id]?.name||id).join(' + ');
+    const star=Number.isFinite(a.questionStars)?` / 問題★${a.questionStars}`:'';
+    $('gf-defense-text').textContent=`${nameOf(a.actor)} → ${nameOf(pendingDefense.target)} / ${names||'攻撃'} / ${elementLabel(a.element)}属性 / 攻撃力${a.atk}${star}。守備値合計ぶんダメージを軽減します。`;
+  }
   $('gf-defend').disabled=!ids.length;
 }
-function renderLog(){const b=$('gf-log');if(!b)return;b.replaceChildren(...logs.map(t=>{const p=document.createElement('p');p.textContent=t;return p}))}
+function renderLog(){
+  const b=$('gf-log');if(!b||lastRenderedLogRevision===logRevision)return;
+  lastRenderedLogRevision=logRevision;
+  const frag=document.createDocumentFragment();
+  for(const item of logs){
+    const p=document.createElement('p');
+    const entry=typeof item==='string'?{text:item,tone:'none'}:item;
+    p.textContent=entry.text;p.dataset.tone=cleanTone(entry.tone);frag.append(p);
+  }
+  b.replaceChildren(frag);
+}
 function render(){renderPlayers();renderHand();renderHeader();renderLog()}
 
 function bindBattle(){
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible'&&role==='guest'&&!hostConn?.open&&publicState?.phase!==PHASE.FINISHED){
+      clearTimeout(battleGuestRetryTimer);battleGuestRetryTimer=setTimeout(connectBattleGuest,180);
+    }
+  });
+  window.addEventListener('online',()=>{
+    if(role==='guest'&&!hostConn?.open&&publicState?.phase!==PHASE.FINISHED){
+      clearTimeout(battleGuestRetryTimer);battleGuestRetryTimer=setTimeout(connectBattleGuest,180);
+    }
+  });
   $('gf-choices')?.addEventListener('click',e=>{
     const button=e.target.closest('button[data-choice]');
     if(!button||button.disabled)return;

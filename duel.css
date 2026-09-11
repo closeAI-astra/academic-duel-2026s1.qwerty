@@ -88,3 +88,35 @@ body.duel-battle-mode .main-shell{padding:10px 14px;max-width:none}
 /* Full Credit: KO -> next-card 50 damage cinematic. Transform/opacity-only for smooth P2P battle rendering. */
 .duel-credit-chain{position:fixed;inset:0;z-index:10010;overflow:hidden;pointer-events:none;background:#030712e8;isolation:isolate;perspective:1100px}
 .duel-credit-chain[hidden]{display:none!important}.credit-chain-bg{position:absolute;inset:-15%;background:radial-gradient(circle at 50% 48%,#f6d87366 0 10%,#173b7a55 28%,#030712 70%),repeating-conic-gradient(from 0deg,#f6d87318 0 4deg,transparent 4deg 14deg);transform:scale(.7);opacity:0}.credit-chain-rings{position:absolute;left:50%;top:48%;width:min(65vw,720px);aspect-ratio:1;border:2px solid #f4d372;border-radius:50%;transform:translate(-50%,-50%) scale(.25) rotate(-30deg);opacity:0;box-shadow:0 0 55px #f4d37266,inset 0 0 50px #4e7fc255}.credit-chain-rings:before,.credit-chain-rings:after{content:'';position:absolute;inset:12%;border:1px dashed #f5df9f;border-radius:50%}.credit-chain-rings:after{inset:28%;border-style:solid}.credit-chain-attacker,.credit-chain-target{position:absolute;top:50%;height:min(70vh,700px);max-width:42vw;object-fit:contain;filter:drop-shadow(0 18px 36px #000c);will-change:transform,opacity}.credit-chain-attacker{left:10%;transform:translate3d(-35vw,-50%,180px) scale(.72) rotateY(18deg);opacity:0}.credit-chain-target{right:10%;transform:translate3d(35vw,-50%,-120px) scale(.72) rotateY(-18deg);opacity:0;filter:grayscale(.2) brightness(.7) drop-shadow(0 18px 36px #000c)}.credit-chain-bolt{position:absolute;left:13%;right:13%;top:48%;height:10px;z-index:4;transform:scaleX(0) rotate(-4deg);transform-origin:left center;background:linear-gradient(90deg,#fff,#f7d66e 35%,#70a9ff 68%,#fff);box-shadow:0 0 12px #fff,0 0 28px #f7d66e,0 0 55px #70a9ff}.credit-chain-copy{position:absolute;z-index:6;left:5%;right:5%;bottom:7vh;text-align:center;text-shadow:0 3px 16px #000}.credit-chain-copy small,.credit-chain-copy strong,.credit-chain-copy span{display:block;opacity:0;transform:translateY(18px)}.credit-chain-copy small{font-size:11px;letter-spacing:.24em;color:#f7dc8a}.credit-chain-copy strong{font:900 clamp(42px,8vw,98px)/1 Georgia,'Yu Mincho',serif;color:#fff8dd;text-shadow:0 0 22px #f6d56f}.credit-chain-copy span{margin-top:8px;font-size:clamp(16px,2.4vw,28px);letter-spacing:.08em}.credit-chain-copy b{color:#ffd86b;font-size:1.35em}.duel-credit-chain.active .credit-chain-bg{animation:cc-bg 1.55s ease-out both}.duel-credit-chain.active .credit-chain-rings{animation:cc-rings 1.55s cubic-bezier(.1,.8,.12,1) both}.duel-credit-chain.active .credit-chain-attacker{animation:cc-attacker 1.55s cubic-bezier(.12,.82,.16,1) both}.duel-credit-chain.active .credit-chain-target{animation:cc-target 1.55s cubic-bezier(.12,.82,.16,1) both}.duel-credit-chain.active .credit-chain-bolt{animation:cc-bolt 1.55s .42s cubic-bezier(.05,.85,.15,1) both}.duel-credit-chain.active .credit-chain-copy small,.duel-credit-chain.active .credit-chain-copy strong,.duel-credit-chain.active .credit-chain-copy span{animation:cc-copy .5s .52s ease-out both}.duel-credit-chain.active .credit-chain-copy strong{animation-delay:.6s}.duel-credit-chain.active .credit-chain-copy span{animation-delay:.7s}@keyframes cc-bg{0%{opacity:0;transform:scale(.7) rotate(-7deg)}25%{opacity:1}100%{opacity:.75;transform:scale(1.05) rotate(2deg)}}@keyframes cc-rings{0%{opacity:0;transform:translate(-50%,-50%) scale(.2) rotate(-50deg)}32%{opacity:.8}100%{opacity:.55;transform:translate(-50%,-50%) scale(1.2) rotate(160deg)}}@keyframes cc-attacker{0%{opacity:0;transform:translate3d(-35vw,-50%,180px) scale(.72) rotateY(18deg)}28%,72%{opacity:1;transform:translate3d(0,-50%,180px) scale(1.02) rotateY(0)}100%{opacity:.6;transform:translate3d(-3vw,-50%,80px) scale(.96)}}@keyframes cc-target{0%,34%{opacity:0;transform:translate3d(35vw,-50%,-120px) scale(.72) rotateY(-18deg)}50%,72%{opacity:1;transform:translate3d(0,-50%,0) scale(.95) rotateY(0)}82%{filter:brightness(2.1) saturate(.2) drop-shadow(0 0 28px #fff)}100%{opacity:.55;transform:translate3d(7vw,-50%,-100px) scale(.82) rotate(4deg);filter:brightness(.5) grayscale(.7)}}@keyframes cc-bolt{0%,20%{transform:scaleX(0) rotate(-4deg);opacity:0}32%{opacity:1;transform:scaleX(1) rotate(-4deg)}43%{height:24px;filter:brightness(1.8)}60%,100%{opacity:0;transform:scaleX(1.08) rotate(-4deg)}}@keyframes cc-copy{from{opacity:0;transform:translateY(20px) scale(.96)}to{opacity:1;transform:none}}@media(max-width:700px){.credit-chain-attacker,.credit-chain-target{height:52vh;max-width:58vw}.credit-chain-attacker{left:-3%}.credit-chain-target{right:-3%}.credit-chain-copy{bottom:4vh}}@media(prefers-reduced-motion:reduce){.duel-credit-chain.active *{animation-duration:.25s!important;animation-delay:0s!important}}
+
+/* Ver.2.00 FINAL-005 — desktop/tablet deck interaction */
+#duel-card-pool,#duel-deck-list{
+  position:relative;
+  z-index:3;
+  isolation:isolate;
+  pointer-events:auto!important;
+}
+.duel-pool-card{
+  position:relative;
+  z-index:1;
+  pointer-events:auto!important;
+  touch-action:manipulation;
+  user-select:none;
+  -webkit-user-select:none;
+}
+.duel-pool-card>*{
+  pointer-events:none!important;
+}
+.duel-deck-row .outline-button{
+  position:relative;
+  z-index:2;
+  pointer-events:auto!important;
+  touch-action:manipulation;
+}
+@media(hover:hover) and (pointer:fine){
+  .duel-pool-card:hover{
+    border-color:#d8bc78;
+    background:#131923;
+    transform:translateY(-1px);
+  }
+}

@@ -7,9 +7,11 @@
 <meta name="theme-color" content="#090b0f">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com https://cdn.jsdelivr.net; img-src 'self' data:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>学歴召喚 G.F. Ver.2.00</title>
-<link rel="stylesheet" href="./godfield.css?v=2.00-final-004">
+<link rel="stylesheet" href="./access-gate.css?v=2.00-final-007">
+<link rel="stylesheet" href="./godfield.css?v=2.00-final-007">
+<script src="./access-gate.js?v=2.00-final-007"></script>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
-<script type="module" src="./godfield-battle.js?v=2.00-final-004"></script>
+<script type="module" src="./godfield-battle.js?v=2.00-final-007"></script>
 </head>
 <body class="gf2-body" data-gf-battle="1" data-gf-build="2.00">
 <main id="gf-panel" class="gf2-shell">
@@ -18,6 +20,17 @@
     <div><strong>G.F. × ENGLISH</strong><small>ACADEMIC DUEL · FINAL</small></div>
     <div class="gf2-status"><em class="gf2-version">Ver.2.00</em><span id="gf-status">接続中…</span><b id="gf-timer"></b></div>
   </header>
+
+
+  <section id="gf-timer-panel" class="gf2-timer-panel" hidden aria-live="off">
+    <div class="gf2-timer-meta">
+      <strong>TIME LIMIT</strong>
+      <b id="gf-timer-label"></b>
+    </div>
+    <div class="gf2-timer-track" role="progressbar" aria-label="残り時間">
+      <i id="gf-timer-fill"></i>
+    </div>
+  </section>
 
   <section id="gf-focus" class="gf2-duel-head" aria-live="polite">
     <article class="gf2-side left">
@@ -29,6 +42,10 @@
       <strong id="gf-focus-cards">神器を選択</strong>
       <span>→</span>
       <b id="gf-focus-result"></b>
+      <strong id="gf-focus-damage" class="gf2-damage-readout">攻撃待機</strong>
+      <i id="gf-focus-element" class="gf2-element-badge" data-tone="none">無属性</i>
+      <i id="gf-focus-stars" class="gf2-star-readout"></i>
+      <small id="gf-focus-detail" class="gf2-focus-detail">行動待機中</small>
     </div>
     <article class="gf2-side right">
       <small>DEFENSE / TARGET</small>
@@ -43,6 +60,7 @@
       <button id="gf-use" type="button">選択神器を使う</button>
       <button id="gf-pray" type="button">祈る</button>
       <strong id="gf-lobby-note"></strong>
+      <div id="gf-attack-preview" class="gf2-attack-preview" hidden></div>
     </div>
     <div id="gf-log" class="gf2-log"></div>
   </section>

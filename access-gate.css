@@ -1,0 +1,40 @@
+html.academia-access-locked body{overflow:hidden!important}
+html.academia-access-locked body>*:not(#academia-access-gate){visibility:hidden!important}
+#academia-access-gate{
+  visibility:visible!important;
+  position:fixed;inset:0;z-index:2147483647;
+  display:grid;place-items:center;
+  padding:20px;
+  background:
+    radial-gradient(circle at 50% 20%,#2b2112 0,transparent 32%),
+    linear-gradient(145deg,#080a0e,#050609);
+  color:#f2eee5;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+.academia-login-card{
+  width:min(430px,100%);
+  padding:30px;
+  border:1px solid #d5b35f66;
+  border-radius:14px;
+  background:#0d1015f5;
+  box-shadow:0 28px 90px #000b,0 0 40px #d5b35f12;
+}
+.academia-login-mark{font-size:30px;color:#d5b35f}
+.academia-login-kicker{margin:8px 0 2px;color:#d5b35f;font-size:10px;letter-spacing:.2em}
+.academia-login-card h1{margin:0 0 8px;font:700 36px Georgia,"Yu Mincho",serif}
+.academia-login-copy{margin:0 0 22px;color:#a8a7a3;font-size:13px}
+.academia-login-card label{display:grid;gap:7px}
+.academia-login-card label span{font-size:10px;letter-spacing:.14em;color:#b9a36d}
+.academia-login-card input{
+  width:100%;min-height:50px;padding:11px 13px;
+  border:1px solid #ffffff25;border-radius:8px;
+  background:#07090d;color:#fff;font-size:19px;
+}
+.academia-login-card button{
+  width:100%;min-height:50px;margin-top:12px;
+  border:1px solid #f1d18b;border-radius:8px;
+  background:linear-gradient(110deg,#c99f51,#eed08e,#c99f51);
+  color:#21190e;font-weight:900;font-size:16px;
+  touch-action:manipulation;cursor:pointer;
+}
+.academia-login-error{min-height:22px;margin:10px 0 0;color:#ed9a91;font-size:12px}

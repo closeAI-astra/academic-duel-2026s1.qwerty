@@ -1,4 +1,4 @@
-import { makeGodFieldQuestion } from './godfield-questions.js?v=2.00-final-004';
+import { makeGodFieldQuestion } from './godfield-questions.js?v=2.00-final-007';
 
 export const GF = Object.freeze({
   MAX_PLAYERS: 5,
@@ -179,6 +179,35 @@ export const CARDS = Object.freeze([
 export const CARD = Object.freeze(Object.fromEntries(CARDS.map(c=>[c.id,c])));
 
 const TRADE_EFFECTS = new Set(['exchange','sell','buy']);
+
+export function cardQuestionStars(card){
+  if(!card)return null;
+  if(card.kind==='weapon')return Math.max(1,Math.min(5,card.stars??1));
+  if(card.kind==='add')return Math.max(0,Math.min(5,card.stars??1));
+  if(card.kind==='global')return globalQuestionStars(card.hit);
+  if(card.kind==='miracle'&&card.miracleMode==='add')return Math.max(0,Math.min(5,card.stars??1));
+  if(card.kind==='miracle'&&card.miracleMode==='attack')return probabilityQuestionStars(card.hit);
+  if(card.kind==='special'&&card.effect==='frank')return 0;
+  return null;
+}
+
+export function cardQuestionLabel(card){
+  const stars=cardQuestionStars(card);
+  if(stars===null)return '';
+  if(card?.kind==='add'||(card?.kind==='miracle'&&card.miracleMode==='add')){
+    return `問題+★${stars}`;
+  }
+  return `問題★${stars}`;
+}
+
+const CARD_POOLS = Object.freeze({
+  trade:Object.freeze(CARDS.filter(c=>c.kind==='utility'&&TRADE_EFFECTS.has(c.effect))),
+  single:Object.freeze(CARDS.filter(c=>c.kind==='weapon'||c.kind==='add')),
+  global:Object.freeze(CARDS.filter(c=>c.kind==='global')),
+  defense:Object.freeze(CARDS.filter(c=>c.kind==='defense')),
+  miracle:Object.freeze(CARDS.filter(c=>c.kind==='miracle')),
+  misc:Object.freeze(CARDS.filter(c=>(c.kind==='utility'&&!TRADE_EFFECTS.has(c.effect))||c.kind==='special')),
+});
 const weightedPick=(pool,rng)=>{
   if(!pool.length)return undefined;
   const total=pool.reduce((n,c)=>n+(c.weight||1),0);
@@ -188,14 +217,7 @@ const weightedPick=(pool,rng)=>{
 };
 
 export function drawArtifact(rng=Math.random){
-  const pools={
-    trade:CARDS.filter(c=>c.kind==='utility'&&TRADE_EFFECTS.has(c.effect)),
-    single:CARDS.filter(c=>c.kind==='weapon'||c.kind==='add'),
-    global:CARDS.filter(c=>c.kind==='global'),
-    defense:CARDS.filter(c=>c.kind==='defense'),
-    miracle:CARDS.filter(c=>c.kind==='miracle'),
-    misc:CARDS.filter(c=>(c.kind==='utility'&&!TRADE_EFFECTS.has(c.effect))||c.kind==='special'),
-  };
+  const pools=CARD_POOLS;
   const r=rng()*GF.DECK_TOTAL;
   let n=GF.DISTRIBUTION.trade;
   if(r<n)return weightedPick(pools.trade,rng);
