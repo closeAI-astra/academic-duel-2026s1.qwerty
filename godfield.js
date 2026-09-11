@@ -1,12 +1,12 @@
-import { GF, CARD, CARDS, makeGFQuestion, attackQuestionStars, globalQuestionStars, probabilityQuestionStars, cardQuestionStars, cardQuestionLabel } from './godfield-data.js?v=2.00-final-009';
+import { GF, CARD, CARDS, makeGFQuestion, attackQuestionStars, globalQuestionStars, probabilityQuestionStars, cardQuestionStars, cardQuestionLabel } from './godfield-data.js?v=2.00-complete-001';
 import {
   PHASE, makePlayer, makeState, player, alive, drawToHand, consumeFromHand, pray,
   buildSingleAttack, isAttackModifier, defenseCompatible, resolveDefense as calcDefense, damagePlayer,
   healPlayer, addAilment, removeAilments, learnMiracle, advanceTurn, payForSale, validateExchange, clampHp
-} from './godfield-engine.js?v=2.00-final-009';
+} from './godfield-engine.js?v=2.00-complete-001';
 import { randomInviteCode,normalizeInviteCode,randomPeerId,byteLength,P2P_MESSAGE_LIMIT_BYTES,safeStorageGet,safeStorageSet } from './security.js';
 import { getPublicProfile,rememberFriend,recordAnswerResult,recordMatchResult } from './profile.js';
-import { recordReviewMiss } from './review-storage.js?v=2.00-final-009';
+import { recordReviewMiss } from './review-storage.js?v=2.00-complete-001';
 
 const $=id=>document.getElementById(id);
 const BUILD='2.00';
@@ -100,9 +100,6 @@ function clearTransition(){
   try{sessionStorage.removeItem(TRANSITION_KEY)}catch{}
   try{localStorage.removeItem(TRANSITION_BACKUP_KEY)}catch{}
 }
-function hardGoBattle(code){
-  location.href=`./godfield-battle.html?room=${encodeURIComponent(code)}&t=${Date.now()}&build=200`;
-}
 function provisionalBattleState(players){
   return {
     phase:PHASE.LOBBY,turn:null,winner:null,draw:false,turnCount:0,
@@ -113,45 +110,42 @@ function provisionalBattleState(players){
     }))
   };
 }
-async function mountBattleView(code,players=[]){
+function mountBattleView(code,players=[]){
   if(battleViewMounted)return true;
-  if(battleViewMounting){
-    for(let i=0;i<80&&!battleViewMounted;i++)await new Promise(r=>setTimeout(r,25));
-    return battleViewMounted;
-  }
-  battleViewMounting=true;
-  try{
-    const res=await fetch(`./godfield-battle.html?v=2.00-final-009`,{cache:'no-store'});
-    if(!res.ok)throw new Error(`battle html ${res.status}`);
-    const source=await res.text();
-    const doc=new DOMParser().parseFromString(source,'text/html');
-    const incoming=doc.querySelector('main#gf-panel');
-    if(!incoming)throw new Error('battle main missing');
 
-    const main=document.importNode(incoming,true);
-    document.body.replaceChildren(main);
-    document.body.className='gf2-body';
-    document.body.dataset.gfBattle='1';
-    document.body.dataset.gfBuild=BUILD;
-    document.title='学歴召喚 G.F. Ver.2.00';
-
-    const url=`./godfield-battle.html?room=${encodeURIComponent(code)}&t=${Date.now()}&build=200`;
-    try{history.pushState({gfBattle:true,code},'',url)}catch{}
-
-    publicState=provisionalBattleState(players);
-    hand=[];learned=[];
-    battleViewMounted=true;
-    battleViewMounting=false;
-
-    bindBattle();
-    render();
-    status(role==='host'?'参加者の画面切替待ち…':'対戦画面準備完了');
-    return true;
-  }catch(err){
-    console.error('GodField same-page mount failed',err);
-    battleViewMounting=false;
+  const tpl=document.getElementById('gf-battle-template');
+  const source=tpl?.content?.querySelector('main#gf-panel');
+  if(!source){
+    status('対戦画面テンプレートを読み込めませんでした');
+    console.error('GodField battle template missing');
     return false;
   }
+
+  const main=source.cloneNode(true);
+  document.body.replaceChildren(main);
+  document.body.className='gf2-body';
+  document.body.dataset.gfBattle='1';
+  document.body.dataset.gfBuild=BUILD;
+  document.title='学歴召喚 G.F. Ver.2.00';
+
+  // ページ遷移しない。URLもindex.htmlのままなので、
+  // ブラウザがGodField開始時にWebRTCを切るきっかけを作らない。
+  try{
+    history.replaceState(
+      {gfBattle:true,code},
+      '',
+      `./index.html?tab=godfield&battle=${encodeURIComponent(code)}`
+    );
+  }catch{}
+
+  publicState=provisionalBattleState(players);
+  hand=[];learned=[];
+  battleViewMounted=true;
+
+  bindBattle();
+  render();
+  status(role==='host'?'参加者の対戦画面準備待ち…':'対戦画面準備完了');
+  return true;
 }
 function maybeStartMountedBattle(){
   if(role!=='host'||battleStarted||!battleViewMounted||!expectedIds)return;
@@ -159,13 +153,8 @@ function maybeStartMountedBattle(){
   if(!expectedGuests.every(id=>battleViewReadyGuests.has(id)))return;
   startBattleState();
 }
-async function goBattle(code,players=[]){
-  const ok=await mountBattleView(code,players);
-  if(!ok){
-    hardGoBattle(code);
-    return false;
-  }
-  return true;
+function goBattle(code,players=[]){
+  return mountBattleView(code,players);
 }
 
 function stopTimerTicker(){
@@ -1091,12 +1080,11 @@ function receive(msg,conn=null){
   if(msg.type==='NAVIGATE'){
     const players=(d.players||[]).map(profileSafe).filter(Boolean);
     saveTransition({role:'guest',code:d.code,players,created:now()});
-    goBattle(d.code,players).then(ok=>{
-      if(ok&&hostConn?.open){
-        send(hostConn,'BATTLE_VIEW_READY',{pid:localPid});
-        status('対戦画面準備完了 · ホスト同期待ち');
-      }
-    });
+    const ok=goBattle(d.code,players);
+    if(ok&&hostConn?.open){
+      send(hostConn,'BATTLE_VIEW_READY',{pid:localPid});
+      status('対戦画面準備完了 · ホスト同期待ち');
+    }
     return
   }
   if(msg.type==='START'){
@@ -1181,7 +1169,7 @@ function disconnectPlayer(pid){
 
 let lobbyProfiles=[];
 let expectedIds=null;
-let battleStarted=false,battleViewMounted=false,battleViewMounting=false,battleViewReadyGuests=new Set();
+let battleStarted=false,battleViewMounted=false,battleViewReadyGuests=new Set();
 let battleReadyGuests=new Set();
 let battleStartPayloads=new Map();
 let battleResendTimer=null;
@@ -1201,7 +1189,7 @@ function resetConnections(){
   battleReadyGuests.clear();battleStartPayloads.clear();battleViewReadyGuests.clear();
   for(const timer of disconnectGraceTimers.values())clearTimeout(timer);
   disconnectGraceTimers.clear();
-  battleStarted=false;battleViewMounted=false;battleViewMounting=false;
+  battleStarted=false;battleViewMounted=false;
   battleGuestAttempts=0;lobbyGuestAttempts=0;
 }
 
@@ -1278,18 +1266,19 @@ function joinRoom(){
     status('通信エラー。再試行してください');
   });
 }
-async function startGame(){
+function startGame(){
   if(role!=='host'||lobbyProfiles.length<2)return;
   const players=lobbyProfiles.map(profileSafe).filter(Boolean);
   expectedIds=new Set(players.map(p=>p.id));
   battleViewReadyGuests.clear();
   saveTransition({role:'host',code:roomCode,players,created:now()});
 
+  // 全員へ「画面だけ切り替える」指示を、現在のDataChannelで送る。
   for(const p of players){
     if(p.id!==localPid)send(guests.get(p.id),'NAVIGATE',{code:roomCode,players});
   }
 
-  const ok=await goBattle(roomCode,players);
+  const ok=goBattle(roomCode,players);
   if(!ok)return;
   status('対戦画面準備完了 · 参加者待ち');
   maybeStartMountedBattle();

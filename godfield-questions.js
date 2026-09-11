@@ -2,18 +2,18 @@
 // ★0 is intentionally kept easy for 「お前Fランやないか」.
 // ★1–★5 assume a player already has the vocabulary base needed for
 // highly selective Japanese university entrance exams.
-// ★5 is capped around practical TOEIC L&R ~860 vocabulary rather than
+// ★5 is capped around practical TOEIC L&R ~850–880 vocabulary rather than
 // drifting into rare literary / specialist C1-C2 vocabulary.
 
-export const GF_QUESTION_SET_ID = 'GF-TOEIC860-2026-S1';
+export const GF_QUESTION_SET_ID = 'GF-TOEIC880-2026-S1';
 
 export const GF_DIFFICULTY_LABELS = Object.freeze({
   0: '中学基礎（Fラン特殊用）',
-  1: '旧帝大合格レベル・標準',
-  2: '旧帝大上位〜TOEIC 700前後',
-  3: 'TOEIC 730〜780前後',
-  4: 'TOEIC 780〜830前後',
-  5: 'TOEIC 830〜860前後',
+  1: '旧帝大合格〜上位レベル',
+  2: '旧帝大上位〜TOEIC 730前後',
+  3: 'TOEIC 760〜800前後',
+  4: 'TOEIC 800〜850前後',
+  5: 'TOEIC 850〜880前後',
 });
 
 export const GF_QUESTION_BANK = Object.freeze({
@@ -28,25 +28,25 @@ export const GF_QUESTION_BANK = Object.freeze({
   1: Object.freeze([
     ['acknowledge','認める'],['adequate','十分な'],['anticipate','予期する'],['attribute','～に原因を帰する'],
     ['compelling','説得力のある'],['constitute','構成する'],['conventional','従来の'],['derive','導き出す'],
-    ['diminish','減少させる'],['diverse','多様な'],['emerge','現れる'],['equivalent','同等の'],
+    ['diminish','減少させる'],['ambiguous','曖昧な'],['discern','見分ける'],['equivalent','同等の'],
     ['explicit','明示的な'],['fundamental','根本的な'],['impose','課す'],['inevitable','避けられない'],
     ['infer','推論する'],['interpret','解釈する'],['notion','概念'],['perspective','観点'],
     ['plausible','もっともらしい'],['preliminary','予備的な'],['prominent','著名な・目立つ'],['reluctant','気が進まない'],
     ['retain','保持する'],['rigorous','厳密な'],['substantial','かなりの'],['sustain','維持する'],
-    ['undergo','経験する'],['valid','妥当な'],['virtually','事実上'],['undermine','損なう'],
-    ['subsequent','その後の'],['relevant','関連のある'],['advocate','提唱する'],['coherent','一貫した']
+    ['undergo','経験する'],['empirical','経験的な・実証的な'],['virtually','事実上'],['undermine','損なう'],
+    ['subsequent','その後の'],['inherent','本質的に備わった'],['advocate','提唱する'],['coherent','一貫した']
   ]),
 
   2: Object.freeze([
     ['accommodate','対応する・収容する'],['allocate','配分する'],['authorize','許可する'],['compensate','補償する'],
-    ['consecutive','連続した'],['constraint','制約'],['eligible','資格がある'],['facilitate','促進する'],
-    ['implement','実施する'],['incentive','奨励策'],['mandatory','義務的な'],['negotiate','交渉する'],
-    ['prospective','見込みの'],['renovation','改装'],['revenue','収益'],['subsidiary','子会社'],
+    ['relinquishment','放棄'],['constraint','制約'],['eligible','資格がある'],['facilitate','促進する'],
+    ['implement','実施する'],['incentive','奨励策'],['materiality','重要性・重要度'],['negotiate','交渉する'],
+    ['discretionary','裁量による'],['renovation','改装'],['revenue','収益'],['subsidiary','子会社'],
     ['tentative','暫定的な'],['warranty','保証'],['inventory','在庫'],['itinerary','旅程'],
     ['premises','施設・敷地'],['promptly','速やかに'],['quotation','見積もり'],['reimburse','払い戻す'],
-    ['shipment','出荷'],['vendor','業者・販売業者'],['overdue','期限を過ぎた'],['designated','指定された'],
-    ['appraisal','査定・評価'],['audit','監査'],['notify','通知する'],['occupancy','入居率・占有率'],
-    ['attain','達成する'],['compile','まとめる'],['deduct','差し引く'],['lease','賃貸借する']
+    ['shipment','出荷'],['vendor','業者・販売業者'],['overdue','期限を過ぎた'],['fiduciary','受託者としての'],
+    ['appraisal','査定・評価'],['audit','監査'],['adhere','従う・固守する'],['occupancy','入居率・占有率'],
+    ['convene','招集する'],['rectify','是正する'],['deduct','差し引く'],['lease','賃貸借する']
   ]),
 
   3: Object.freeze([
@@ -55,10 +55,10 @@ export const GF_QUESTION_BANK = Object.freeze({
     ['interim','暫定の'],['liaison','連絡・連携'],['merger','合併'],['outsource','外注する'],
     ['procurement','調達'],['proprietary','独自所有の'],['rectify','是正する'],['redeem','引き換える'],
     ['rescind','取り消す'],['solicit','求める'],['streamline','効率化する'],['surplus','余剰'],
-    ['unanimous','全会一致の'],['viable','実行可能な'],['incur','負う'],['designate','指名する'],
-    ['replenish','補充する'],['comparable','比較できる'],['confidential','機密の'],['foreseeable','予見可能な'],
+    ['unanimous','全会一致の'],['viable','実行可能な'],['incur','負う'],['corroborate','裏付ける'],
+    ['replenish','補充する'],['reconcile','調整して一致させる'],['confidential','機密の'],['foreseeable','予見可能な'],
     ['obligation','義務'],['respective','それぞれの'],['suspension','停止・一時中止'],['turnover','売上高・回転率'],
-    ['diversify','多角化する'],['affiliation','提携関係'],['benchmark','基準'],['comprehensive','包括的な']
+    ['diversify','多角化する'],['affiliation','提携関係'],['discretionary','裁量による'],['preliminary','予備的な']
   ]),
 
   4: Object.freeze([
@@ -67,13 +67,13 @@ export const GF_QUESTION_BANK = Object.freeze({
     ['liability','責任・負債'],['lucrative','収益性の高い'],['municipal','地方自治体の'],['precedent','前例'],
     ['prerequisite','前提条件'],['recur','再発する'],['remittance','送金'],['scrutinize','精査する'],
     ['stipulate','規定する'],['subsidize','補助金を出す'],['surcharge','追加料金'],['tenure','在職期間'],
-    ['unprecedented','前例のない'],['withhold','差し控える'],['deliberation','審議'],['diligent','勤勉な'],
-    ['defer','延期する'],['entail','伴う'],['expenditure','支出'],['forthcoming','近日中の'],
+    ['unprecedented','前例のない'],['withhold','差し控える'],['deliberation','審議'],['consequential','重大な結果を伴う'],
+    ['defer','延期する'],['entail','伴う'],['expenditure','支出'],['relinquish','放棄する'],
     ['incidental','付随的な'],['pertinent','関連性のある'],['provisional','暫定的な'],['retention','維持・定着'],
-    ['resilient','回復力のある'],['statutory','法定の'],['waiver','権利放棄・免除'],['withdrawal','撤回・引き出し']
+    ['resilient','回復力のある'],['statutory','法定の'],['waiver','権利放棄・免除'],['ratification','批准・正式承認']
   ]),
 
-  // 最難関でもTOEIC 860前後を上限にし、極端な文学語・専門語は避ける。
+  // 最難関でもTOEIC 850〜880前後を上限にし、極端な文学語・専門語は避ける。
   5: Object.freeze([
     ['accrue','蓄積する'],['alleviate','緩和する'],['applicable','適用可能な'],['arbitrary','恣意的な'],
     ['concurrent','同時進行の'],['counterpart','対応する相手・同等物'],['detrimental','有害な'],['disbursement','支出・支払い'],
@@ -82,7 +82,7 @@ export const GF_QUESTION_BANK = Object.freeze({
     ['reimbursement','払い戻し'],['remuneration','報酬'],['solvency','支払能力'],['stringent','厳格な'],
     ['substantiate','裏付ける'],['discrepancy','食い違い'],['incumbent','現職の・現任の'],['reconcile','調整して一致させる'],
     ['compliance','遵守'],['procure','調達する'],['conformity','適合・一致'],['delegation','委任'],
-    ['exemption','免除'],['restructure','再編する'],['revocation','取り消し'],['subsidiary','子会社の・子会社'],
+    ['exemption','免除'],['restructure','再編する'],['revocation','取り消し'],['indemnify','補償する'],
     ['consecutive','連続した'],['mandatory','義務的な'],['prospective','見込みの'],['contingent','条件付きの']
   ])
 });

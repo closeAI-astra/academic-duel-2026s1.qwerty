@@ -12,16 +12,16 @@
   <meta name="description" content="46大学と、SからFまで7つの姿の『学歴の亡者森』を召喚。無料で何度でも遊べる、幻想カード10連ガチャ。">
   <title>学歴召喚 -academic duel- 2026S1</title>
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./access-gate.css?v=2.00-final-009">
+  <link rel="stylesheet" href="./access-gate.css?v=2.00-complete-001">
   <link rel="stylesheet" href="./style.css">
-  <script src="./access-gate.js?v=2.00-final-009"></script>
+  <script src="./access-gate.js?v=2.00-complete-001"></script>
   <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js" referrerpolicy="no-referrer"></script>
-  <script type="module" src="./app.js?v=2.00-final-009"></script>
+  <script type="module" src="./app.js?v=2.00-complete-001"></script>
   <link rel="stylesheet" href="./crystal.css">
   <link rel="stylesheet" href="./collab-cinema.css">
   <link rel="stylesheet" href="./fullcredit-cinema.css">
-  <link rel="stylesheet" href="./duel.css?v=2.00-final-009">
-  <link rel="stylesheet" href="./godfield.css?v=2.00-final-009">
+  <link rel="stylesheet" href="./duel.css?v=2.00-complete-001">
+  <link rel="stylesheet" href="./godfield.css?v=2.00-complete-001">
 </head>
 <body>
   <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
@@ -96,7 +96,7 @@
           <div>
             <p class="eyebrow">GODFIELD × ENGLISH · P2P LOBBY</p>
             <h1>ゴッドフィールド風 英単語対戦</h1>
-            <p>2〜5人。ここは部屋の作成・参加だけを行うロビーです。対戦開始後は同じP2P接続を維持したまま、画面だけ軽量な専用対戦UIへ切り替わります。</p>
+            <p>2〜5人。ここは部屋の作成・参加だけを行うロビーです。対戦開始後は通信を切らず、同じP2P接続のまま対戦画面へ切り替わります。</p>
           </div>
           <div><strong>2026 S1</strong><br><small>8択 · 10秒 · 最後の1人が勝利</small></div>
         </div>
@@ -138,7 +138,7 @@
           <div class="gf-transition-box">
             <span class="gf-transition-mark">G.F.</span>
             <h2>対戦フィールドへ移動中</h2>
-            <p>通信を切らずに参加者の画面を対戦UIへ切り替えています…</p>
+            <p>通信を維持したまま対戦画面へ切り替えています…</p>
           </div>
         </div>
       </div>
@@ -211,5 +211,142 @@
   </dialog>
   <div id="live-status" class="sr-only" aria-live="polite"></div>
   <noscript><p class="noscript">このガチャを遊ぶには、ブラウザのJavaScriptを有効にしてください。</p></noscript>
+
+<template id="gf-battle-template">
+<main id="gf-panel" class="gf2-shell">
+  <header class="gf2-topbar">
+    <button id="gf-leave" class="gf2-back" type="button">←</button>
+    <div><strong>G.F. × ENGLISH</strong><small>ACADEMIC DUEL · FINAL</small></div>
+    <div class="gf2-status"><em class="gf2-version">Ver.2.00</em><span id="gf-status">接続中…</span><b id="gf-timer"></b></div>
+  </header>
+
+
+  <section id="gf-timer-panel" class="gf2-timer-panel" hidden aria-live="off">
+    <div class="gf2-timer-meta">
+      <strong>TIME LIMIT</strong>
+      <b id="gf-timer-label"></b>
+    </div>
+    <div class="gf2-timer-track" role="progressbar" aria-label="残り時間">
+      <i id="gf-timer-fill"></i>
+    </div>
+  </section>
+
+  <section id="gf-focus" class="gf2-duel-head" aria-live="polite">
+    <article class="gf2-side left">
+      <small>ATTACK</small>
+      <strong id="gf-turn-name">WAIT</strong>
+      <span id="gf-attacker-stats">HP -- / MP -- / ¥--</span>
+    </article>
+    <div class="gf2-action">
+      <strong id="gf-focus-cards">神器を選択</strong>
+      <span>→</span>
+      <b id="gf-focus-result"></b>
+      <strong id="gf-focus-damage" class="gf2-damage-readout">攻撃待機</strong>
+      <i id="gf-focus-element" class="gf2-element-badge" data-tone="none">無属性</i>
+      <i id="gf-focus-stars" class="gf2-star-readout"></i>
+      <small id="gf-focus-detail" class="gf2-focus-detail">行動待機中</small>
+    </div>
+    <article class="gf2-side right">
+      <small>DEFENSE / TARGET</small>
+      <strong id="gf-target-display">SELECT</strong>
+      <span id="gf-target-stats">HP -- / MP -- / ¥--</span>
+      <select id="gf-target" hidden></select>
+    </article>
+  </section>
+
+  <section class="gf2-middle">
+    <div class="gf2-actions">
+      <button id="gf-use" type="button">選択神器を使う</button>
+      <button id="gf-pray" type="button">祈る</button>
+      <strong id="gf-lobby-note"></strong>
+      <div id="gf-attack-preview" class="gf2-attack-preview" hidden></div>
+    </div>
+    <div id="gf-log" class="gf2-log"></div>
+  </section>
+
+  <section class="gf2-hand-wrap">
+    <div class="gf2-caption">YOUR ARTIFACTS</div>
+    <div id="gf-hand" class="gf2-hand"></div>
+  </section>
+
+  <section class="gf2-player-wrap">
+    <div class="gf2-caption">PLAYERS</div>
+    <div id="gf-players" class="gf2-players"></div>
+  </section>
+
+  <section id="gf-interaction" class="gf2-interaction" aria-live="polite">
+    <section class="gf2-question-slot">
+      <div class="gf2-slot-label">QUESTION</div>
+      <aside id="gf-question" class="gf2-question" hidden>
+        <div class="gf2-qhead"><span id="gf-q-stars"></span><b id="gf-q-role">8択 / 10秒</b></div>
+        <h2 id="gf-q-word"></h2>
+        <div id="gf-choices" class="gf2-choices"></div>
+        <p id="gf-q-spectator" class="gf2-q-spectator" hidden></p>
+      </aside>
+      <div id="gf-question-idle" class="gf2-slot-idle">問題待機中</div>
+    </section>
+
+    <section class="gf2-defense-slot">
+      <div class="gf2-slot-label">DEFENSE</div>
+      <aside id="gf-defense" class="gf2-defense" hidden>
+        <div class="gf2-defense-head">
+          <strong>防御する神器を選択</strong>
+          <span id="gf-defense-count">0枚 / 守0</span>
+        </div>
+        <p id="gf-defense-text"></p>
+        <small>中央の手札で明るい防具を好きな枚数選択</small>
+        <div class="gf2-defense-actions">
+          <button id="gf-defend" type="button" disabled>選択防具で防御</button>
+          <button id="gf-take" type="button">許す</button>
+        </div>
+      </aside>
+      <div id="gf-defense-idle" class="gf2-slot-idle">防御待機中</div>
+    </section>
+  </section>
+
+  <aside id="gf-trade" class="gf2-modal" hidden>
+    <div class="gf2-modal-card">
+      <small id="gf-trade-kicker">TRADE</small>
+      <h2 id="gf-trade-title">取引</h2>
+      <p id="gf-trade-target"></p>
+
+      <div id="gf-buy-pane" hidden>
+        <strong id="gf-trade-item-name"></strong>
+        <p id="gf-trade-item-desc"></p>
+        <b id="gf-trade-price"></b>
+        <p id="gf-trade-money"></p>
+        <div><button id="gf-buy-confirm">買う</button><button id="gf-buy-cancel">やめる</button></div>
+      </div>
+
+      <div id="gf-sell-pane" hidden>
+        <select id="gf-sell-item"></select>
+        <p id="gf-sell-preview"></p>
+        <div><button id="gf-sell-confirm">売る</button><button id="gf-sell-cancel">やめる</button></div>
+      </div>
+
+      <div id="gf-exchange-pane" hidden>
+        <p id="gf-exchange-total"></p>
+        <div class="gf2-exchange">
+          <label>HP<input id="gf-exchange-hp" type="number" min="1" max="100"></label>
+          <label>MP<input id="gf-exchange-mp" type="number" min="0"></label>
+          <label>¥<input id="gf-exchange-money" type="number" min="0"></label>
+        </div>
+        <p id="gf-exchange-remaining"></p>
+        <p id="gf-exchange-error"></p>
+        <div><button id="gf-exchange-confirm">決定</button><button id="gf-exchange-cancel">やめる</button></div>
+      </div>
+    </div>
+  </aside>
+
+  <div id="gf-cutin" class="gf2-cutin" hidden>
+    <img src="./assets/mori-f.webp" alt="">
+    <strong id="gf-cutin-line">お前Ｆランやないか</strong>
+  </div>
+
+  <div id="gf-result" class="gf2-result" hidden>
+    <div><small>BATTLE FINISHED</small><h1 id="gf-result-name">WINNER</h1><p>5秒後にロビーへ戻ります</p></div>
+  </div>
+</main>
+</template>
 </body>
 </html>
