@@ -1,0 +1,21 @@
+Ver.2.00 FINAL-003
+
+GitHub Pagesへアップロードするときは、このZIPを解凍して中身を全部アップロードしてください。
+
+重要:
+以前のリポジトリに残っている
+- godfield-battle-v127.html
+- godfield-battle-v128.html
+- godfield-battle-v200.html
+- godfield-battle-v201.html
+- godfield-battle-v202.html
+
+も今回のファイルで必ず上書きしてください。
+
+今回の5ファイルは削除用ではなく、
+古いURLを踏んでも godfield-battle.html (Ver.2.00) へ強制転送するための互換ファイルです。
+
+正しい対戦画面:
+godfield-battle.html
+右上表示:
+Ver.2.00
